@@ -23,11 +23,6 @@ Ensure the following command-line utilities are installed and available in your 
 * `sha512sum`
 * GNU Core Utilities (`find`, `sort`, `awk`, `grep`, `wc`, `basename`, `dirname`)
 
-### Installation Example (Debian/Ubuntu/Linux Mint)
-```bash
-sudo apt update
-sudo apt install coreutils
-
 ### Recommended Workflow
 
 A three part series to clean, verify, and lockdown securely the integrity of an audio file library. 
