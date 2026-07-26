@@ -1,6 +1,3 @@
-# linux-audio-sha512-checksums
-Create checksum files to verify the integrity of audio files and folder contents. 
-
 # FLAC Library SHA-512 Verification
 
 A collection of Bash scripts for generating, verifying, and auditing cryptographic hashes across FLAC music libraries on Linux.
