@@ -1,0 +1,562 @@
+# FLAC Library SHA-512 Checksum & Verification Guide
+
+01. Introduction
+
+This document is a guide and automated script procedure for generating, verifying, and auditing cryptographic hashes across large audio libraries on Linux systems.
+
+It is intended for users who require strict data preservation, routine auditing for silent data corruption (bit rot), and absolute verification.
+
+Typically, these SHA-512 checksums are verified after data is copied to ensure the copy is a perfect match to the original.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+02. Requirements
+
+To successfully execute the scripts in this guide, your system must have the following command-line tools installed and available in your shell's PATH:
+
+    sha512sum – Required for calculating and verifying the SHA-512 cryptographic hashes.
+
+    Core Utilities – Standard GNU core utilities (`find`, `sort`, `awk`, `grep`, `wc`, `basename`, `dirname`) commonly available in Linux environments like Linux Mint.
+
+    Zenity / Nemo Actions (Optional) – For users integrating visual verification into the Nemo file manager via custom action scripts.
+
+
+-- Note on File Naming Conventions
+
+To prioritize strict data preservation and structural clarity, this workflow utilizes a specific tiered naming convention for its manifests: `ARTIST.sha512sums.txt` for top-level artist directories and `ALBUM.sha512sums.txt` for individual album folders. Maintaining this exact convention is critical for the automated auditing scripts and Nemo action configurations to function correctly.
+
+
+-- Library Structure
+
+```
+Parent/
+├── Artist1/
+│   ├── artist-level files
+│   ├── Album1/
+│   │   ├── album files
+│   │   └── ...
+│   └── Album2/
+└── Artist2/
+```
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+03. Design Philosophy
+
+This guide is built on three core data-management principles:
+    
+* Decentralized Verification: Hash files are stored locally within the directory of the files they protect, ensuring that data and its verification record travel together during transfers.
+
+* Relative Pathing: Scripts operate within subshells to generate strictly relative paths in the hash files, preventing verification failures if the library is moved to a different drive or mount point.
+
+* Traceable Execution: All operations generate clean, timestamped logs and separate success/failure lists, ensuring total transparency and auditability across massive data sets.
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+04. Workflow Overview
+
+The hashing process follows a comprehensive six-step operational pipeline designed to audit, establish, confirm, and maintain data integrity:
+
+* Step 1: Stray File Audit and Identification — Scan and isolate unrecognized files prior to hashing
+* Step 2: Create SHA-512 Checksums for Album Folders
+* Step 3: Verification of Album Folders
+* Step 4: Create SHA-512 Checksums for Artist Folders
+* Step 5: Verification of Artist Folders
+* Step 6: Auditing the Library — Scan the file system to identify rogue folders or incorrect checksum naming
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+05. Step 1 – Stray File Audit and Identification
+
+-- Purpose
+
+This step scans the Parent folder, all Artist folders, and all Album folders to identify and report any stray, unrecognized, or misplaced files anywhere within the library hierarchy.
+
+Before generating checksum manifests, it is critical to ensure that no unexpected or extraneous files are included in the cryptographic hash baseline. This step flags any files that are not authorized audio files, valid album artwork, or existing checksum manifests.
+
+
+-- What It Does
+
+* Scans the target library directories recursively before any hashing begins.
+* Evaluates all files against an allowed list of standard audio formats and artwork extensions (matched case-insensitively, so `Cover.JPG` is treated the same as `cover.jpg`).
+* Identifies unapproved or unexpected "stray" files.
+* Generates an itemized report logging the path and name of every stray file found.
+* Logs the full run — file list plus the summary line — to a single reviewable log.
+
+    Note: Must be run from Parent Folder
+
+--- Bash Script Start ---
+```bash
+
+#!/usr/bin/env bash
+
+LOGDIR="$HOME/sha512_library_logs"
+mkdir -p "$LOGDIR"
+
+{
+    echo "Stray file audit started..."
+
+    find "$PWD" -type f \
+        ! -iname "*.flac" \
+        ! -iname "*.mp3" \
+        ! -iname "*.m4a" \
+        ! -iname "*.wav" \
+        ! -iname "*.ogg" \
+        ! -iname "*.opus" \
+        ! -iname "*.alac" \
+        ! -iname "*.jpg" \
+        ! -iname "*.jpeg" \
+        ! -iname "*.png" \
+        ! -name "ARTIST.sha512sums.txt" \
+        ! -name "ALBUM.sha512sums.txt" \
+        -print | tee "$LOGDIR/step1_stray_files_found.log"
+
+    count=$(wc -l < "$LOGDIR/step1_stray_files_found.log")
+
+    if [ "$count" -gt 0 ]; then
+        echo "WARNING: Found $count stray/unrecognized file(s). Review '$LOGDIR/step1_stray_files_found.log' before generating checksums."
+    else
+        echo "OK: No unauthorized stray files detected. Library is clean for checksum generation."
+    fi
+
+    echo "Stray file audit completed."
+} | tee "$LOGDIR/step1_run.log"
+
+```
+--- Bash Script End ---
+
+
+-- Review Results
+
+View the generated reports:
+
+--- Bash Script Start ---
+```bash
+
+cat "$LOGDIR/step1_run.log"
+
+```
+--- Bash Script End ---
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+06. Step 2 – Create SHA-512 Checksums for Album Folders
+
+-- Purpose
+
+This step establishes the cryptographic fingerprint for individual files located inside nested Album folders. It creates the standard `ALBUM.sha512sums.txt` file.
+
+
+-- What It Does
+
+* Scans the library recursively for Album-level directories exactly two levels below the invocation point (Parent/Artist/Album).
+* Changes into each Album directory.
+* Calculates hashes for local media files and artwork.
+* Writes the results to `ALBUM.sha512sums.txt`.
+* Sends any read errors to a log instead of the manifest, so the manifest itself is never corrupted by stray error text.
+
+  Note: May be run from Album Folder, Artist Folder or Parent Folder
+
+--- Bash Script Start ---
+```bash
+
+#!/usr/bin/env bash
+
+LOGDIR="$HOME/sha512_library_logs"
+mkdir -p "$LOGDIR"
+
+# Detect current folder depth to set search parameters
+current_depth=$(echo "$PWD" | tr -cd '/' | wc -c)
+
+case $current_depth in
+    # Parent Folder (e.g., /music) -> Search depth 2 (Artist/Album)
+    3) 
+        min=2; max=2
+        ;;
+    # Artist Folder (e.g., /music/Artist) -> Search depth 1 (Album)
+    4) 
+        min=1; max=1
+        ;;
+    # Album Folder (e.g., /music/Artist/Album) -> Search depth 0 (Current)
+    5) 
+        min=0; max=0
+        ;;
+    *)
+        echo "Error: Please run from Parent, Artist, or Album folder."
+        exit 1
+        ;;
+esac
+
+mapfile -d '' dirs < <(find "$PWD" -mindepth $min -maxdepth $max -type d -print0 | LC_ALL=C sort -z)
+
+total=${#dirs[@]}
+i=0
+
+for d in "${dirs[@]}"; do
+    i=$((i+1))
+    
+    # Adjust artist/album names based on depth
+    if [ $min -eq 0 ]; then
+        # Running from Album
+        album=$(basename "$d")
+        artist=$(basename "$(dirname "$d")")
+        label="$artist-$album"
+    elif [ $min -eq 1 ]; then
+        # Running from Artist
+        album=$(basename "$d")
+        artist=$(basename "$PWD")
+        label="$artist-$album"
+    else
+        # Running from Parent
+        album=$(basename "$d")
+        artist=$(basename "$(dirname "$d")")
+        label="$artist-$album"
+    fi
+
+    (
+        cd "$d" || exit 1
+        shopt -s nullglob
+        files=(*)
+        shopt -u nullglob
+
+        target_files=()
+        for f in "${files[@]}"; do
+            if [[ -f "$f" && "$f" != "ARTIST.sha512sums.txt" && "$f" != "ALBUM.sha512sums.txt" ]]; then
+                target_files+=("$f")
+            fi
+        done
+
+        if [ ${#target_files[@]} -gt 0 ]; then
+            sha512sum "${target_files[@]}" > "ALBUM.sha512sums.txt" 2>"$LOGDIR/temp_err.log"
+            exit $?
+        else
+            exit 0
+        fi
+    )
+
+    rc=$?
+
+    if [ $rc -ne 0 ]; then
+        echo "FAIL [$i/$total] $label"
+        sed "s/^/[$i\/$total] ERROR: $label :: /" "$LOGDIR/temp_err.log" >> "$LOGDIR/step2_errors.log"
+    else
+        echo "OK [$i/$total] $label"
+    fi
+done | tee "$LOGDIR/step2_run.log"
+rm -f "$LOGDIR/temp_err.log"
+
+```
+--- Bash Script End ---
+
+
+-- Review Results
+
+View the generated reports:
+
+--- Bash Script Start ---
+```bash
+
+cat "$LOGDIR/step2_run.log"
+
+```
+--- Bash Script End ---
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+## 07. Step 3 – Verification of Album Folders
+
+### Purpose
+
+This step validates the integrity of the individual album folders, confirming that no audio files have suffered bit rot or silent corruption.
+
+### What It Does
+
+* Recursively locates all `ALBUM.sha512sums.txt` manifests.
+* Executes the verification process locally within each album directory, in strict mode so a malformed or corrupted manifest is treated as a failure rather than silently skipped.
+* Directs standard error to the centralized logging directory.
+
+  Note: Must be run from Album Folder, Artist Folder or Parent Folder
+
+--- Bash Script Start ---
+```bash
+
+#!/usr/bin/env bash
+
+LOGDIR="$HOME/sha512_library_logs"
+mkdir -p "$LOGDIR"
+
+mapfile -d '' manifests < <(find "$PWD" -type f -name "ALBUM.sha512sums.txt" -print0 | LC_ALL=C sort -z)
+
+total=${#manifests[@]}
+i=0
+
+for m in "${manifests[@]}"; do
+    i=$((i+1))
+    dir_path=$(dirname "$m")
+    album=$(basename "$dir_path")
+    artist=$(basename "$(dirname "$dir_path")")
+    label="$artist-$album"
+
+    (
+        cd "$dir_path" || exit 1
+        sha512sum -c --quiet --strict "ALBUM.sha512sums.txt" 2>&1
+    ) > "$LOGDIR/temp_err.log"
+
+    rc=$?
+
+    if [ $rc -ne 0 ]; then
+        echo "FAIL [$i/$total] $label"
+        sed "s/^/[$i\/$total] ERROR: $label :: /" "$LOGDIR/temp_err.log" >> "$LOGDIR/step3_errors.log"
+    else
+        echo "OK [$i/$total] $label"
+    fi
+done | tee "$LOGDIR/step3_run.log"
+rm -f "$LOGDIR/temp_err.log"
+
+```
+--- Bash Script End ---
+
+
+-- Review Results
+
+View the generated reports:
+
+--- Bash Script Start ---
+```bash
+cat "$LOGDIR/step3_run.log"
+
+```
+--- Bash Script End ---
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+## 08. Step 4 – Create SHA-512 Checksums for Artist Folders
+
+### Purpose
+
+This step establishes the baseline cryptographic fingerprint for files located directly within the parent Artist directories. It creates the standard `ARTIST.sha512sums.txt` manifest.
+
+### What It Does
+
+* Scans the selected library location for top-level Artist directories.
+* Changes into each directory to ensure relative file paths are used.
+* Calculates a SHA-512 hash for the targeted files.
+* Writes the results to `ARTIST.sha512sums.txt`.
+* Sends any read errors to a log instead of the manifest, for the same reason as Step 2.
+
+  Note: Must be run from Parent Folder
+
+--- Bash Script Start ---
+```bash
+
+#!/usr/bin/env bash
+
+LOGDIR="$HOME/sha512_library_logs"
+mkdir -p "$LOGDIR"
+
+mapfile -d '' dirs < <(find "$PWD" -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z)
+
+total=${#dirs[@]}
+i=0
+
+for d in "${dirs[@]}"; do
+    i=$((i+1))
+    artist=$(basename "$d")
+
+    (
+        cd "$d" || exit 1
+        shopt -s nullglob
+        files=(*)
+        shopt -u nullglob
+
+        target_files=()
+        for f in "${files[@]}"; do
+            if [[ -f "$f" && "$f" != "ARTIST.sha512sums.txt" && "$f" != "ALBUM.sha512sums.txt" ]]; then
+                target_files+=("$f")
+            fi
+        done
+
+        if [ ${#target_files[@]} -gt 0 ]; then
+            sha512sum "${target_files[@]}" > "ARTIST.sha512sums.txt" 2>"$LOGDIR/temp_err.log"
+            exit $?
+        else
+            exit 0
+        fi
+    )
+
+    rc=$?
+
+    if [ $rc -ne 0 ]; then
+        echo "FAIL [$i/$total] $artist"
+        sed "s/^/[$i\/$total] ERROR: $artist :: /" "$LOGDIR/temp_err.log" >> "$LOGDIR/step4_errors.log"
+    else
+        echo "OK [$i/$total] $artist"
+    fi
+done | tee "$LOGDIR/step4_run.log"
+rm -f "$LOGDIR/temp_err.log"
+
+```
+--- Bash Script End ---
+
+
+-- Review Results
+
+View the generated reports:
+
+--- Bash Script Start ---
+```bash
+
+cat "$LOGDIR/step4_run.log"
+
+```
+--- Bash Script Start ---
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+09. Step 5 – Verification of Artist Folders
+
+-- Purpose
+
+This step validates the integrity of the top-level artist hashes against the current state of the files to detect missing or corrupted data.
+
+-- What It Does
+
+* Recursively locates all `ARTIST.sha512sums.txt` manifests.
+* Executes `sha512sum` in strict verification mode.
+* Logs pinpointed failures for immediate review.
+
+  Note: Must be run from Parent Folder
+
+--- Bash Script Start ---
+```bash
+
+#!/usr/bin/env bash
+
+LOGDIR="$HOME/sha512_library_logs"
+mkdir -p "$LOGDIR"
+
+mapfile -d '' manifests < <(find "$PWD" -type f -name "ARTIST.sha512sums.txt" -print0 | LC_ALL=C sort -z)
+
+total=${#manifests[@]}
+i=0
+
+for m in "${manifests[@]}"; do
+    i=$((i+1))
+    dir_path=$(dirname "$m")
+    artist=$(basename "$dir_path")
+
+    (
+        cd "$dir_path" || exit 1
+        sha512sum -c --quiet --strict "ARTIST.sha512sums.txt" 2>&1
+    ) > "$LOGDIR/temp_err.log"
+
+    rc=$?
+
+    if [ $rc -ne 0 ]; then
+        echo "FAIL [$i/$total] $artist"
+        sed "s/^/[$i\/$total] ERROR: $artist :: /" "$LOGDIR/temp_err.log" >> "$LOGDIR/step5_errors.log"
+    else
+        echo "OK [$i/$total] $artist"
+    fi
+done | tee "$LOGDIR/step5_run.log"
+rm -f "$LOGDIR/temp_err.log"
+
+```
+--- Bash Script Start ---
+
+
+-- Review Results
+
+View the generated reports:
+
+--- Bash Script Start ---
+```bash
+
+cat "$LOGDIR/step5_run.log"
+
+```
+--- Bash Script End ---
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+10. Step 6 – Auditing the Library
+
+-- Purpose
+
+This step audits the structural integrity of the library itself. It scans for any directories that are missing their required manifest files, or files that violate the strict naming convention, ensuring nothing escapes the verification safety net.
+
+-- What It Does
+
+* Scans all directories in the library.
+* Flags any directory lacking a corresponding manifest file.
+* Flags any loose checksum files that do not match the expected naming schema — including near-miss case variants like `artist.sha512sums.txt`, since the naming convention is exact-case by design.
+
+  Note: Must be run from Parent Folder
+
+--- Bash Script Start ---
+```bash
+
+#!/usr/bin/env bash
+
+LOGDIR="$HOME/sha512_library_logs"
+mkdir -p "$LOGDIR"
+
+echo "Auditing library for rogue files and missing manifests..." | tee "$LOGDIR/step6_run.log"
+
+find "$PWD" -type f -iname "*.sha512*" \
+    ! -name "ARTIST.sha512sums.txt" \
+    ! -name "ALBUM.sha512sums.txt" \
+    -print | tee -a "$LOGDIR/step6_rogue_names.log"
+
+mapfile -d '' dirs < <(find "$PWD" -type d -print0 | LC_ALL=C sort -z)
+
+for d in "${dirs[@]}"; do
+    if [[ ! -f "$d/ARTIST.sha512sums.txt" && ! -f "$d/ALBUM.sha512sums.txt" ]]; then
+        shopt -s nullglob
+        files=("$d"/*)
+        shopt -u nullglob
+
+        has_files=0
+        for f in "${files[@]}"; do
+            if [[ -f "$f" ]]; then
+                has_files=1
+                break
+            fi
+        done
+
+        if [ $has_files -eq 1 ]; then
+            echo "WARNING: Directory contains files but no manifest: $d" | tee -a "$LOGDIR/step6_missing_manifests.log"
+        fi
+    fi
+done
+
+echo "Audit complete. Check step6 logs for detailed anomalies." | tee -a "$LOGDIR/step6_run.log"
+
+```
+--- Bash Script End ---
+
+
+-- Review Results
+
+View the generated reports:
+
+--- Bash Script Start ---
+```bash
+
+cat "$LOGDIR/step6_run.log"
+
+```
+--- Bash Script End ---
+
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+## 11. Troubleshooting & Reference Information
+
+1. Checksum Mismatch ("computed checksum did NOT match")
+If an audit reveals a mismatch, the file has been altered since the hash was generated. Do not regenerate the hash to "fix" the error, as you will be validating corrupted data. Delete the corrupted file and replace it from a known-good backup.
+
+2. Missing File Errors ("FAILED open or read")
+This occurs if a file tracked in the manifest has been renamed or deleted. You must delete the existing manifest in that directory and re-run the Generation scripts to establish a new baseline.
+
+
+
