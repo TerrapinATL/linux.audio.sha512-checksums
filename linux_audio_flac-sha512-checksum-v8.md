@@ -441,27 +441,46 @@ This step validates the integrity of the top-level artist hashes against the cur
 ```bash
 
 #!/usr/bin/env bash
-
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 
+mapfile -d '' artist_dirs < <(find "$PWD" -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z)
 mapfile -d '' manifests < <(find "$PWD" -type f -name "ARTIST.sha512sums.txt" -print0 | LC_ALL=C sort -z)
 
+total_artists=${#artist_dirs[@]}
 total=${#manifests[@]}
 i=0
+missing=0
+
+: > "$LOGDIR/step5_missing.log"
+
+for a in "${artist_dirs[@]}"; do
+    artist_name=$(basename "$a")
+    if [ ! -f "$a/ARTIST.sha512sums.txt" ]; then
+        missing=$((missing+1))
+        echo "MISSING $artist_name :: no ARTIST.sha512sums.txt in $a" >> "$LOGDIR/step5_missing.log"
+    fi
+done
+
+if [ "$total" -eq 0 ]; then
+    echo "ALERT: no ARTIST.sha512sums.txt files found anywhere under $PWD ($total_artists artist folders scanned, 0 have manifests)."
+    echo "Nothing to verify — check you're in the right directory or that checksums were generated here."
+    exit 1
+fi
+
+if [ "$missing" -gt 0 ]; then
+    echo "ALERT: $missing of $total_artists artist folder(s) have no ARTIST.sha512sums.txt — see $LOGDIR/step5_missing.log"
+fi
 
 for m in "${manifests[@]}"; do
     i=$((i+1))
     dir_path=$(dirname "$m")
     artist=$(basename "$dir_path")
-
     (
         cd "$dir_path" || exit 1
         sha512sum -c --quiet --strict "ARTIST.sha512sums.txt" 2>&1
     ) > "$LOGDIR/temp_err.log"
-
     rc=$?
-
     if [ $rc -ne 0 ]; then
         echo "FAIL [$i/$total] $artist"
         sed "s/^/[$i\/$total] ERROR: $artist :: /" "$LOGDIR/temp_err.log" >> "$LOGDIR/step5_errors.log"
@@ -471,6 +490,10 @@ for m in "${manifests[@]}"; do
 done | tee "$LOGDIR/step5_run.log"
 rm -f "$LOGDIR/temp_err.log"
 
+if [ "$missing" -gt 0 ]; then
+    echo ""
+    echo "Reminder: $missing artist folder(s) were skipped (no manifest). See $LOGDIR/step5_missing.log"
+fi
 ```
 --- Bash Script Start ---
 
