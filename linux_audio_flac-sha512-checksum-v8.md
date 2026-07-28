@@ -379,46 +379,70 @@ This step establishes the baseline cryptographic fingerprint for files located d
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 
-mapfile -d '' dirs < <(find "$PWD" -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z)
+RUNLOG="$LOGDIR/artist_hash_run.log"
+ERRLOG="$LOGDIR/artist_hash_errors.log"
 
-total=${#dirs[@]}
+: > "$RUNLOG"
+: > "$ERRLOG"
+
+mapfile -d '' artists < <(
+    find "$PWD" -mindepth 1 -maxdepth 1 -type d -print0 |
+    LC_ALL=C sort -z
+)
+
+total=${#artists[@]}
 i=0
 
-for d in "${dirs[@]}"; do
+for artist in "${artists[@]}"; do
     i=$((i+1))
-    artist=$(basename "$d")
+    name=$(basename "$artist")
+
+    errfile=$(mktemp)
 
     (
-        cd "$d" || exit 1
-        shopt -s nullglob
-        files=(*)
-        shopt -u nullglob
+        cd "$artist" || exit 1
 
-        target_files=()
-        for f in "${files[@]}"; do
-            if [[ -f "$f" && "$f" != "ARTIST.sha512sums.txt" && "$f" != "ALBUM.sha512sums.txt" ]]; then
-                target_files+=("$f")
-            fi
+        : > ARTIST.sha512sums.txt
+
+        mapfile -d '' albums < <(
+            find . -mindepth 1 -maxdepth 1 -type d -print0 |
+            LC_ALL=C sort -z
+        )
+
+        for album in "${albums[@]}"; do
+            album_name=$(basename "$album")
+
+            hash=$(
+                cd "$album" || exit 1
+
+                find . -type f \
+                    ! -name "ALBUM.sha512sums.txt" \
+                    -print0 |
+                LC_ALL=C sort -z |
+                xargs -0 sha512sum |
+                sha512sum |
+                cut -d" " -f1
+            )
+
+            printf "%s  %s\n" "$hash" "$album_name" >> ARTIST.sha512sums.txt
         done
 
-        if [ ${#target_files[@]} -gt 0 ]; then
-            sha512sum "${target_files[@]}" > "ARTIST.sha512sums.txt" 2>"$LOGDIR/temp_err.log"
-            exit $?
-        else
-            exit 0
-        fi
-    )
+    ) 2>"$errfile"
 
     rc=$?
 
     if [ $rc -ne 0 ]; then
-        echo "FAIL [$i/$total] $artist"
-        sed "s/^/[$i\/$total] ERROR: $artist :: /" "$LOGDIR/temp_err.log" >> "$LOGDIR/step4_errors.log"
+        echo "FAIL [$i/$total] $name"
+        sed "s/^/[$i\/$total] ERROR: $name :: /" "$errfile" >> "$ERRLOG"
     else
-        echo "OK [$i/$total] $artist"
+        echo "OK [$i/$total] $name"
     fi
-done | tee "$LOGDIR/step4_run.log"
-rm -f "$LOGDIR/temp_err.log"
+
+    cat "$errfile" >> "$RUNLOG"
+    rm -f "$errfile"
+
+done | tee -a "$RUNLOG"
+
 
 ```
 --- Bash Script End ---
