@@ -287,14 +287,45 @@ This step validates the integrity of the individual album folders, confirming th
 ```bash
 
 #!/usr/bin/env bash
-
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 
+mapfile -d '' album_dirs < <(find "$PWD" -mindepth 2 -maxdepth 2 -type d -print0 | LC_ALL=C sort -z)
 mapfile -d '' manifests < <(find "$PWD" -type f -name "ALBUM.sha512sums.txt" -print0 | LC_ALL=C sort -z)
 
+total_albums=${#album_dirs[@]}
 total=${#manifests[@]}
 i=0
+missing=0
+missing_labels=()
+
+: > "$LOGDIR/step3_missing.log"
+
+for a in "${album_dirs[@]}"; do
+    album_name=$(basename "$a")
+    artist_name=$(basename "$(dirname "$a")")
+    label="$artist_name-$album_name"
+    if [ ! -f "$a/ALBUM.sha512sums.txt" ]; then
+        missing=$((missing+1))
+        missing_labels+=("$label")
+        echo "MISSING $label :: no ALBUM.sha512sums.txt in $a" >> "$LOGDIR/step3_missing.log"
+    fi
+done
+
+if [ "$total" -eq 0 ]; then
+    echo "ALERT: no ALBUM.sha512sums.txt files found anywhere under $PWD ($total_albums album folders scanned, 0 have manifests)."
+    echo "Nothing to verify — check you're in the right directory or that checksums were generated here."
+    exit 1
+fi
+
+if [ "$missing" -gt 0 ]; then
+    echo "ALERT: $missing of $total_albums album folder(s) have no ALBUM.sha512sums.txt:"
+    for label in "${missing_labels[@]}"; do
+        echo "  - $label"
+    done
+    echo "(Full detail in $LOGDIR/step3_missing.log)"
+    echo ""
+fi
 
 for m in "${manifests[@]}"; do
     i=$((i+1))
@@ -302,14 +333,11 @@ for m in "${manifests[@]}"; do
     album=$(basename "$dir_path")
     artist=$(basename "$(dirname "$dir_path")")
     label="$artist-$album"
-
     (
         cd "$dir_path" || exit 1
         sha512sum -c --quiet --strict "ALBUM.sha512sums.txt" 2>&1
     ) > "$LOGDIR/temp_err.log"
-
     rc=$?
-
     if [ $rc -ne 0 ]; then
         echo "FAIL [$i/$total] $label"
         sed "s/^/[$i\/$total] ERROR: $label :: /" "$LOGDIR/temp_err.log" >> "$LOGDIR/step3_errors.log"
@@ -319,6 +347,13 @@ for m in "${manifests[@]}"; do
 done | tee "$LOGDIR/step3_run.log"
 rm -f "$LOGDIR/temp_err.log"
 
+if [ "$missing" -gt 0 ]; then
+    echo ""
+    echo "Reminder: $missing album folder(s) were skipped (no manifest):"
+    for label in "${missing_labels[@]}"; do
+        echo "  - $label"
+    done
+fi
 ```
 --- Bash Script End ---
 
