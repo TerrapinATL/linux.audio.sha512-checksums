@@ -12,6 +12,7 @@ This repository contains automated procedures designed for strict data preservat
 * **Checksum Generation:** Creates `ARTIST.sha512sums.txt` and `ALBUM.sha512sums.txt` using relative pathing.
 * **Integrity Verification:** Validates file integrity against existing manifests in strict mode.
 * **Library Audit:** Scans for missing manifests or non-compliant checksum filenames.
+* **Permission Check:** Automated checks and guidance to ensure your user has the correct read/write ownership and access to the library directory before executing mass batch operations.
 
 ## Prerequisites
 
@@ -19,6 +20,8 @@ Ensure the following command-line utilities are installed and available in your 
 
 * `sha512sum`
 * GNU Core Utilities (`find`, `sort`, `awk`, `grep`, `wc`, `basename`, `dirname`)
+
+**Directory Permissions:** Before running any batch processing scripts, verify that your current user has full read and write permissions to the target library directory to prevent "Permission Denied" failures during execution.
 
 ## Recommended Workflow
 
