@@ -8,27 +8,22 @@ It is intended for users who require strict data preservation, routine auditing 
 
 Typically, these SHA-512 checksums are verified after data is copied to ensure the copy is a perfect match to the original.
 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
 
 02. Requirements
 
 To successfully execute the scripts in this guide, your system must have the following command-line tools installed and available in your shell's PATH:
 
-    sha512sum – Required for calculating and verifying the SHA-512 cryptographic hashes.
-
-    Core Utilities – Standard GNU core utilities (`find`, `sort`, `awk`, `grep`, `wc`, `basename`, `dirname`) commonly available in Linux environments like Linux Mint.
-
-    Zenity / Nemo Actions (Optional) – For users integrating visual verification into the Nemo file manager via custom action scripts.
-
+* sha512sum – Required for calculating and verifying the SHA-512 cryptographic hashes.
+* Core Utilities – Standard GNU core utilities (find, sort, awk, grep, wc, basename, dirname) commonly available in Linux environments like Linux Mint.
+* Zenity / Nemo Actions (Optional) – For users integrating visual verification into the Nemo file manager via custom action scripts.
 
 -- Note on File Naming Conventions
 
-To prioritize strict data preservation and structural clarity, this workflow utilizes a specific tiered naming convention for its manifests: `ARTIST.sha512sums.txt` for top-level artist directories and `ALBUM.sha512sums.txt` for individual album folders. Maintaining this exact convention is critical for the automated auditing scripts and Nemo action configurations to function correctly.
-
+To prioritize strict data preservation and structural clarity, this workflow utilizes a specific tiered naming convention for its manifests: ARTIST.sha512sums.txt for top-level artist directories and ALBUM.sha512sums.txt for individual album folders. Maintaining this exact convention is critical for the automated auditing scripts and Nemo action configurations to function correctly.
 
 -- Library Structure
 
-```
 Parent/
 ├── Artist1/
 │   ├── artist-level files
@@ -37,21 +32,20 @@ Parent/
 │   │   └── ...
 │   └── Album2/
 └── Artist2/
-```
 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+---
 
 03. Design Philosophy
 
-This guide is built on three core data-management principles:
+This guide is built on four core data-management principles:
     
 * Decentralized Verification: Hash files are stored locally within the directory of the files they protect, ensuring that data and its verification record travel together during transfers.
-
 * Relative Pathing: Scripts operate within subshells to generate strictly relative paths in the hash files, preventing verification failures if the library is moved to a different drive or mount point.
-
 * Traceable Execution: All operations generate clean, timestamped logs and separate success/failure lists, ensuring total transparency and auditability across massive data sets.
+* Built-In Permission Guards: Every script includes an automated permission check and interactive chown prompt to catch and resolve root-locked files or mounts (common when formatting drives on desktop systems for Raspberry Pi environments) before processing begins.
 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
 
 04. Workflow Overview
 
@@ -76,24 +70,40 @@ This step scans the Parent folder, all Artist folders, and all Album folders to 
 
 Before generating checksum manifests, it is critical to ensure that no unexpected or extraneous files are included in the cryptographic hash baseline. This step flags any files that are not authorized audio files, valid album artwork, or existing checksum manifests.
 
-
--- What It Does
-
-* Scans the target library directories recursively before any hashing begins.
-* Evaluates all files against an allowed list of standard audio formats and artwork extensions (matched case-insensitively, so `Cover.JPG` is treated the same as `cover.jpg`).
-* Identifies unapproved or unexpected "stray" files.
-* Generates an itemized report logging the path and name of every stray file found.
-* Logs the full run — file list plus the summary line — to a single reviewable log.
-
-    Note: Must be run from Parent Folder
-
 --- Bash Script Start ---
-```bash
 
 #!/usr/bin/env bash
 
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
+
+# --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
+if [ ! -w "$PWD" ]; then
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR: Write/operational permission denied on $PWD."
+    echo "This often happens if a drive was formatted on a desktop system"
+    echo "and the root filesystem is locked to 'root'."
+    echo "=========================================================="
+    echo "Off-script solution:"
+    echo "Fix mount point or drive ownership by running:"
+    echo "  sudo chown -R \$USER:\$USER \"$PWD\""
+    echo ""
+    exit 1
+fi
+
+if ! find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
+    : # All good, owned by current user
+else
+    echo "Notice: Some files/folders are not owned by \$USER."
+    read -rp "Fix permissions now using sudo chown? (y/N): " fix_choice
+    if [[ "$fix_choice" =~ ^[Yy]$ ]]; then
+        sudo chown -R "$USER:$USER" "$PWD" || { echo "chown failed. Check sudo privileges."; exit 1; }
+    else
+        echo "Aborting due to permission mismatch."; exit 1
+    fi
+fi
+# ---------------------------------------------
 
 {
     echo "Stray file audit started..."
@@ -124,21 +134,12 @@ mkdir -p "$LOGDIR"
     echo "Stray file audit completed."
 } | tee "$LOGDIR/step1_run.log"
 
-```
 --- Bash Script End ---
-
 
 -- Review Results
 
-View the generated reports:
-
---- Bash Script Start ---
-```bash
-
+View the generated reports by running:
 cat "$LOGDIR/step1_run.log"
-
-```
---- Bash Script End ---
 
 ---
 
@@ -148,43 +149,50 @@ cat "$LOGDIR/step1_run.log"
 
 -- Purpose
 
-This step establishes the cryptographic fingerprint for individual files located inside nested Album folders. It creates the standard `ALBUM.sha512sums.txt` file.
-
-
--- What It Does
-
-* Scans the library recursively for Album-level directories exactly two levels below the invocation point (Parent/Artist/Album).
-* Changes into each Album directory.
-* Calculates hashes for local media files and artwork.
-* Writes the results to `ALBUM.sha512sums.txt`.
-* Sends any read errors to a log instead of the manifest, so the manifest itself is never corrupted by stray error text.
-
-  Note: May be run from Album Folder, Artist Folder or Parent Folder
+This step establishes the cryptographic fingerprint for individual files located inside nested Album folders. It creates the standard ALBUM.sha512sums.txt file.
 
 --- Bash Script Start ---
-```bash
 
 #!/usr/bin/env bash
 
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 
+# --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
+if [ ! -w "$PWD" ]; then
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR: Write/operational permission denied on $PWD."
+    echo "This often happens if a drive was formatted on a desktop system"
+    echo "and the root filesystem is locked to 'root'."
+    echo "=========================================================="
+    echo "Off-script solution:"
+    echo "Fix mount point or drive ownership by running:"
+    echo "  sudo chown -R \$USER:\$USER \"$PWD\""
+    echo ""
+    exit 1
+fi
+
+if ! find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
+    : # All good, owned by current user
+else
+    echo "Notice: Some files/folders are not owned by \$USER."
+    read -rp "Fix permissions now using sudo chown? (y/N): " fix_choice
+    if [[ "$fix_choice" =~ ^[Yy]$ ]]; then
+        sudo chown -R "$USER:$USER" "$PWD" || { echo "chown failed. Check sudo privileges."; exit 1; }
+    else
+        echo "Aborting due to permission mismatch."; exit 1
+    fi
+fi
+# ---------------------------------------------
+
 # Detect current folder depth to set search parameters
 current_depth=$(echo "$PWD" | tr -cd '/' | wc -c)
 
 case $current_depth in
-    # Parent Folder (e.g., /music) -> Search depth 2 (Artist/Album)
-    3) 
-        min=2; max=2
-        ;;
-    # Artist Folder (e.g., /music/Artist) -> Search depth 1 (Album)
-    4) 
-        min=1; max=1
-        ;;
-    # Album Folder (e.g., /music/Artist/Album) -> Search depth 0 (Current)
-    5) 
-        min=0; max=0
-        ;;
+    3) min=2; max=2 ;;
+    4) min=1; max=1 ;;
+    5) min=0; max=0 ;;
     *)
         echo "Error: Please run from Parent, Artist, or Album folder."
         exit 1
@@ -199,22 +207,12 @@ i=0
 for d in "${dirs[@]}"; do
     i=$((i+1))
     
-    # Adjust artist/album names based on depth
     if [ $min -eq 0 ]; then
-        # Running from Album
-        album=$(basename "$d")
-        artist=$(basename "$(dirname "$d")")
-        label="$artist-$album"
+        album=$(basename "$d"); artist=$(basename "$(dirname "$d")"); label="$artist-$album"
     elif [ $min -eq 1 ]; then
-        # Running from Artist
-        album=$(basename "$d")
-        artist=$(basename "$PWD")
-        label="$artist-$album"
+        album=$(basename "$d"); artist=$(basename "$PWD"); label="$artist-$album"
     else
-        # Running from Parent
-        album=$(basename "$d")
-        artist=$(basename "$(dirname "$d")")
-        label="$artist-$album"
+        album=$(basename "$d"); artist=$(basename "$(dirname "$d")"); label="$artist-$album"
     fi
 
     (
@@ -249,21 +247,12 @@ for d in "${dirs[@]}"; do
 done | tee "$LOGDIR/step2_run.log"
 rm -f "$LOGDIR/temp_err.log"
 
-```
 --- Bash Script End ---
-
 
 -- Review Results
 
-View the generated reports:
-
---- Bash Script Start ---
-```bash
-
+View the generated reports by running:
 cat "$LOGDIR/step2_run.log"
-
-```
---- Bash Script End ---
 
 ---
 
@@ -275,81 +264,81 @@ cat "$LOGDIR/step2_run.log"
 
 This step validates the integrity of the individual album folders, confirming that no audio files have suffered bit rot or silent corruption.
 
--- What It Does
-
-* Recursively locates all `ALBUM.sha512sums.txt` manifests.
-* Executes the verification process locally within each album directory, in strict mode so a malformed or corrupted manifest is treated as a failure rather than silently skipped.
-* Directs standard error to the centralized logging directory.
-
-  Note: Must be run from Album Folder, Artist Folder or Parent Folder
-
 --- Bash Script Start ---
-```bash
 
 #!/usr/bin/env bash
 
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 
-# Safely read directories into an array using a while-read loop
-dirs=()
-while IFS= read -r -d '' dir; do
-    dirs+=("$dir")
-done < <(find "$PWD" -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z)
+# --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
+if [ ! -w "$PWD" ]; then
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR: Write/operational permission denied on $PWD."
+    echo "This often happens if a drive was formatted on a desktop system"
+    echo "and the root filesystem is locked to 'root'."
+    echo "=========================================================="
+    echo "Off-script solution:"
+    echo "Fix mount point or drive ownership by running:"
+    echo "  sudo chown -R \$USER:\$USER \"$PWD\""
+    echo ""
+    exit 1
+fi
 
-total=${#dirs[@]}
+if ! find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
+    : # All good, owned by current user
+else
+    echo "Notice: Some files/folders are not owned by \$USER."
+    read -rp "Fix permissions now using sudo chown? (y/N): " fix_choice
+    if [[ "$fix_choice" =~ ^[Yy]$ ]]; then
+        sudo chown -R "$USER:$USER" "$PWD" || { echo "chown failed. Check sudo privileges."; exit 1; }
+    else
+        echo "Aborting due to permission mismatch."; exit 1
+    fi
+fi
+# ---------------------------------------------
+
+mapfile -d '' manifests < <(find "$PWD" -type f -name "ALBUM.sha512sums.txt" -print0 | LC_ALL=C sort -z)
+
+total=${#manifests[@]}
 i=0
 
-for d in "${dirs[@]}"; do
+if [ "$total" -eq 0 ]; then
+    echo "ALERT: No ALBUM.sha512sums.txt files found under $PWD."
+    echo "Nothing to verify — check that you are in the correct directory."
+    exit 1
+fi
+
+for m in "${manifests[@]}"; do
     i=$((i+1))
-    artist=$(basename "$d")
+    dir_path=$(dirname "$m")
+    album_name=$(basename "$dir_path")
+    artist_name=$(basename "$(dirname "$dir_path")")
+    label="$artist_name-$album_name"
 
     (
-        cd "$d" || exit 1
-        shopt -s nullglob
-        files=(*)
-        shopt -u nullglob
-
-        target_files=()
-        for f in "${files[@]}"; do
-            if [[ -f "$f" && "$f" != "ARTIST.sha512sums.txt" && "$f" != "ALBUM.sha512sums.txt" ]]; then
-                target_files+=("$f")
-            fi
-        done
-
-        if [ ${#target_files[@]} -gt 0 ]; then
-            sha512sum "${target_files[@]}" > "ARTIST.sha512sums.txt" 2>"$LOGDIR/temp_err.log"
-            exit $?
-        else
-            exit 0
-        fi
-    )
+        cd "$dir_path" || exit 1
+        sha512sum -c --quiet --strict "ALBUM.sha512sums.txt" 2>&1
+    ) > "$LOGDIR/temp_err.log"
 
     rc=$?
 
     if [ $rc -ne 0 ]; then
-        echo "FAIL [$i/$total] $artist"
-        sed "s/^/[$i\/$total] ERROR: $artist :: /" "$LOGDIR/temp_err.log" >> "$LOGDIR/step4_errors.log"
+        echo "FAIL [$i/$total] $label"
+        sed "s/^/[$i\/$total] ERROR: $label :: /" "$LOGDIR/temp_err.log" >> "$LOGDIR/step3_errors.log"
     else
-        echo "OK [$i/$total] $artist"
+        echo "OK [$i/$total] $label"
     fi
-done | tee "$LOGDIR/step4_run.log"
+done | tee "$LOGDIR/step3_run.log"
 rm -f "$LOGDIR/temp_err.log"
 
-```
 --- Bash Script End ---
-
 
 -- Review Results
 
-View the generated reports:
-
---- Bash Script Start ---
-```bash
+View the generated reports by running:
 cat "$LOGDIR/step3_run.log"
-
-```
---- Bash Script End ---
 
 ---
 
@@ -359,28 +348,45 @@ cat "$LOGDIR/step3_run.log"
 
 -- Purpose
 
-This step establishes the baseline cryptographic fingerprint for files located directly within the parent Artist directories. It creates the standard `ARTIST.sha512sums.txt` manifest.
-
--- What It Does
-
-* Scans the selected library location for top-level Artist directories.
-* Changes into each directory to ensure relative file paths are used.
-* Calculates a SHA-512 hash for the targeted files.
-* Writes the results to `ARTIST.sha512sums.txt`.
-* Sends any read errors to a log instead of the manifest, for the same reason as Step 2.
-
-  Note: Must be run from Parent Folder
+This step establishes the baseline cryptographic fingerprint for files located directly within the parent Artist directories. It creates the standard ARTIST.sha512sums.txt manifest.
 
 --- Bash Script Start ---
-```bash
 
 #!/usr/bin/env bash
 
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 
-RUNLOG="$LOGDIR/artist_hash_run.log"
-ERRLOG="$LOGDIR/artist_hash_errors.log"
+# --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
+if [ ! -w "$PWD" ]; then
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR: Write/operational permission denied on $PWD."
+    echo "This often happens if a drive was formatted on a desktop system"
+    echo "and the root filesystem is locked to 'root'."
+    echo "=========================================================="
+    echo "Off-script solution:"
+    echo "Fix mount point or drive ownership by running:"
+    echo "  sudo chown -R \$USER:\$USER \"$PWD\""
+    echo ""
+    exit 1
+fi
+
+if ! find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
+    : # All good, owned by current user
+else
+    echo "Notice: Some files/folders are not owned by \$USER."
+    read -rp "Fix permissions now using sudo chown? (y/N): " fix_choice
+    if [[ "$fix_choice" =~ ^[Yy]$ ]]; then
+        sudo chown -R "$USER:$USER" "$PWD" || { echo "chown failed. Check sudo privileges."; exit 1; }
+    else
+        echo "Aborting due to permission mismatch."; exit 1
+    fi
+fi
+# ---------------------------------------------
+
+RUNLOG="$LOGDIR/step4_run.log"
+ERRLOG="$LOGDIR/step4_errors.log"
 
 : > "$RUNLOG"
 : > "$ERRLOG"
@@ -443,22 +449,13 @@ for artist in "${artists[@]}"; do
 
 done | tee -a "$RUNLOG"
 
-
-```
 --- Bash Script End ---
-
 
 -- Review Results
 
-View the generated reports:
-
---- Bash Script Start ---
-```bash
-
+View the generated reports by running:
 cat "$LOGDIR/step4_run.log"
 
-```
---- Bash Script End ---
 
 ---
 
@@ -470,20 +467,40 @@ cat "$LOGDIR/step4_run.log"
 
 This step validates the integrity of the top-level artist hashes against the current state of the files to detect missing or corrupted data.
 
--- What It Does
-
-* Recursively locates all `ARTIST.sha512sums.txt` manifests.
-* Executes `sha512sum` in strict verification mode.
-* Logs pinpointed failures for immediate review.
-
-  Note: Must be run from Parent Folder
-
 --- Bash Script Start ---
-```bash
 
 #!/usr/bin/env bash
+
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
+
+# --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
+if [ ! -w "$PWD" ]; then
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR: Write/operational permission denied on $PWD."
+    echo "This often happens if a drive was formatted on a desktop system"
+    echo "and the root filesystem is locked to 'root'."
+    echo "=========================================================="
+    echo "Off-script solution:"
+    echo "Fix mount point or drive ownership by running:"
+    echo "  sudo chown -R \$USER:\$USER \"$PWD\""
+    echo ""
+    exit 1
+fi
+
+if ! find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
+    : # All good, owned by current user
+else
+    echo "Notice: Some files/folders are not owned by \$USER."
+    read -rp "Fix permissions now using sudo chown? (y/N): " fix_choice
+    if [[ "$fix_choice" =~ ^[Yy]$ ]]; then
+        sudo chown -R "$USER:$USER" "$PWD" || { echo "chown failed. Check sudo privileges."; exit 1; }
+    else
+        echo "Aborting due to permission mismatch."; exit 1
+    fi
+fi
+# ---------------------------------------------
 
 mapfile -d '' artist_dirs < <(find "$PWD" -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z)
 mapfile -d '' manifests < <(find "$PWD" -type f -name "ARTIST.sha512sums.txt" -print0 | LC_ALL=C sort -z)
@@ -546,21 +563,12 @@ if [ "$missing" -gt 0 ]; then
     done
 fi
 
-```
 --- Bash Script End ---
-
 
 -- Review Results
 
-View the generated reports:
-
---- Bash Script Start ---
-```bash
-
+View the generated reports by running:
 cat "$LOGDIR/step5_run.log"
-
-```
---- Bash Script End ---
 
 ---
 
@@ -572,21 +580,40 @@ cat "$LOGDIR/step5_run.log"
 
 This step audits the structural integrity of the library itself. It scans for any directories that are missing their required manifest files, or files that violate the strict naming convention, ensuring nothing escapes the verification safety net.
 
--- What It Does
-
-* Scans all directories in the library.
-* Flags any directory lacking a corresponding manifest file.
-* Flags any loose checksum files that do not match the expected naming schema — including near-miss case variants like `artist.sha512sums.txt`, since the naming convention is exact-case by design.
-
-  Note: Must be run from Parent Folder
-
 --- Bash Script Start ---
-```bash
 
 #!/usr/bin/env bash
 
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
+
+# --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
+if [ ! -w "$PWD" ]; then
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR: Write/operational permission denied on $PWD."
+    echo "This often happens if a drive was formatted on a desktop system"
+    echo "and the root filesystem is locked to 'root'."
+    echo "=========================================================="
+    echo "Off-script solution:"
+    echo "Fix mount point or drive ownership by running:"
+    echo "  sudo chown -R \$USER:\$USER \"$PWD\""
+    echo ""
+    exit 1
+fi
+
+if ! find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
+    : # All good, owned by current user
+else
+    echo "Notice: Some files/folders are not owned by \$USER."
+    read -rp "Fix permissions now using sudo chown? (y/N): " fix_choice
+    if [[ "$fix_choice" =~ ^[Yy]$ ]]; then
+        sudo chown -R "$USER:$USER" "$PWD" || { echo "chown failed. Check sudo privileges."; exit 1; }
+    else
+        echo "Aborting due to permission mismatch."; exit 1
+    fi
+fi
+# ---------------------------------------------
 
 echo "Auditing library for rogue files and missing manifests..." | tee "$LOGDIR/step6_run.log"
 
@@ -619,21 +646,12 @@ done
 
 echo "Audit complete. Check step6 logs for detailed anomalies." | tee -a "$LOGDIR/step6_run.log"
 
-```
 --- Bash Script End ---
-
 
 -- Review Results
 
-View the generated reports:
-
---- Bash Script Start ---
-```bash
-
+View the generated reports by running:
 cat "$LOGDIR/step6_run.log"
-
-```
---- Bash Script End ---
 
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
@@ -644,6 +662,3 @@ If an audit reveals a mismatch, the file has been altered since the hash was gen
 
 2. Missing File Errors ("FAILED open or read")
 This occurs if a file tracked in the manifest has been renamed or deleted. You must delete the existing manifest in that directory and re-run the Generation scripts to establish a new baseline.
-
-
-
