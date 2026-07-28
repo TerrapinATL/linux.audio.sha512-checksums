@@ -64,9 +64,11 @@ The hashing process follows a comprehensive six-step operational pipeline design
 * Step 5: Verification of Artist Folders
 * Step 6: Auditing the Library — Scan the file system to identify rogue folders or incorrect checksum naming
 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
 
 05. Step 1 – Stray File Audit and Identification
+
+---
 
 -- Purpose
 
