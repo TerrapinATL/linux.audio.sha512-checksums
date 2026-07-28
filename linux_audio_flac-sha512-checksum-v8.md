@@ -271,11 +271,11 @@ cat "$LOGDIR/step2_run.log"
 
 ---
 
-### Purpose
+-- Purpose
 
 This step validates the integrity of the individual album folders, confirming that no audio files have suffered bit rot or silent corruption.
 
-### What It Does
+-- What It Does
 
 * Recursively locates all `ALBUM.sha512sums.txt` manifests.
 * Executes the verification process locally within each album directory, in strict mode so a malformed or corrupted manifest is treated as a failure rather than silently skipped.
