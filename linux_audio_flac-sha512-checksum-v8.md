@@ -451,6 +451,7 @@ total_artists=${#artist_dirs[@]}
 total=${#manifests[@]}
 i=0
 missing=0
+missing_names=()
 
 : > "$LOGDIR/step5_missing.log"
 
@@ -458,6 +459,7 @@ for a in "${artist_dirs[@]}"; do
     artist_name=$(basename "$a")
     if [ ! -f "$a/ARTIST.sha512sums.txt" ]; then
         missing=$((missing+1))
+        missing_names+=("$artist_name")
         echo "MISSING $artist_name :: no ARTIST.sha512sums.txt in $a" >> "$LOGDIR/step5_missing.log"
     fi
 done
@@ -469,7 +471,12 @@ if [ "$total" -eq 0 ]; then
 fi
 
 if [ "$missing" -gt 0 ]; then
-    echo "ALERT: $missing of $total_artists artist folder(s) have no ARTIST.sha512sums.txt — see $LOGDIR/step5_missing.log"
+    echo "ALERT: $missing of $total_artists artist folder(s) have no ARTIST.sha512sums.txt:"
+    for name in "${missing_names[@]}"; do
+        echo "  - $name"
+    done
+    echo "(Full detail in $LOGDIR/step5_missing.log)"
+    echo ""
 fi
 
 for m in "${manifests[@]}"; do
@@ -492,8 +499,12 @@ rm -f "$LOGDIR/temp_err.log"
 
 if [ "$missing" -gt 0 ]; then
     echo ""
-    echo "Reminder: $missing artist folder(s) were skipped (no manifest). See $LOGDIR/step5_missing.log"
+    echo "Reminder: $missing artist folder(s) were skipped (no manifest):"
+    for name in "${missing_names[@]}"; do
+        echo "  - $name"
+    done
 fi
+
 ```
 --- Bash Script Start ---
 
