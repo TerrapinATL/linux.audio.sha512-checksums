@@ -140,9 +140,11 @@ cat "$LOGDIR/step1_run.log"
 ```
 --- Bash Script End ---
 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
 
 06. Step 2 – Create SHA-512 Checksums for Album Folders
+
+---
 
 -- Purpose
 
@@ -263,9 +265,11 @@ cat "$LOGDIR/step2_run.log"
 ```
 --- Bash Script End ---
 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
 
-## 07. Step 3 – Verification of Album Folders
+07. Step 3 – Verification of Album Folders
+
+---
 
 ### Purpose
 
@@ -330,15 +334,17 @@ cat "$LOGDIR/step3_run.log"
 ```
 --- Bash Script End ---
 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
 
-## 08. Step 4 – Create SHA-512 Checksums for Artist Folders
+08. Step 4 – Create SHA-512 Checksums for Artist Folders
 
-### Purpose
+---
+
+-- Purpose
 
 This step establishes the baseline cryptographic fingerprint for files located directly within the parent Artist directories. It creates the standard `ARTIST.sha512sums.txt` manifest.
 
-### What It Does
+-- What It Does
 
 * Scans the selected library location for top-level Artist directories.
 * Changes into each directory to ensure relative file paths are used.
@@ -413,9 +419,11 @@ cat "$LOGDIR/step4_run.log"
 ```
 --- Bash Script Start ---
 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
 
 09. Step 5 – Verification of Artist Folders
+
+---
 
 -- Purpose
 
@@ -479,9 +487,11 @@ cat "$LOGDIR/step5_run.log"
 ```
 --- Bash Script End ---
 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
 
 10. Step 6 – Auditing the Library
+
+---
 
 -- Purpose
 
@@ -552,7 +562,7 @@ cat "$LOGDIR/step6_run.log"
 
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-## 11. Troubleshooting & Reference Information
+11. Troubleshooting & Reference Information
 
 1. Checksum Mismatch ("computed checksum did NOT match")
 If an audit reveals a mismatch, the file has been altered since the hash was generated. Do not regenerate the hash to "fix" the error, as you will be validating corrupted data. Delete the corrupted file and replace it from a known-good backup.
