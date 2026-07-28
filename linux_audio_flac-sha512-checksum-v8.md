@@ -452,7 +452,7 @@ View the generated reports:
 cat "$LOGDIR/step4_run.log"
 
 ```
---- Bash Script Start ---
+--- Bash Script End ---
 
 ---
 
@@ -541,7 +541,7 @@ if [ "$missing" -gt 0 ]; then
 fi
 
 ```
---- Bash Script Start ---
+--- Bash Script End ---
 
 
 -- Review Results
