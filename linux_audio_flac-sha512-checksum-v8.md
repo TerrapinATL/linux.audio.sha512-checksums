@@ -76,6 +76,8 @@ Before generating checksum manifests, it is critical to ensure that no unexpecte
 
 #!/usr/bin/env bash
 
+#Step 1 – Stray File Audit and Identification
+
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 
@@ -166,6 +168,9 @@ This step establishes the cryptographic fingerprint for individual files located
 ```bash
 
 #!/usr/bin/env bash
+
+#Step 2 – Create SHA-512 Checksums for Album Folders
+
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 # --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
@@ -274,6 +279,8 @@ This step validates the integrity of the individual album folders, confirming th
 
 #!/usr/bin/env bash
 
+#Step 3 – Verification of Album Folders
+
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 
@@ -368,6 +375,8 @@ This step establishes the baseline cryptographic fingerprint for files located d
 ```bash
 
 #!/usr/bin/env bash
+
+#Step 4 – Create SHA-512 Checksums for Artist Folders
 
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
@@ -496,6 +505,8 @@ This step validates the integrity of the top-level artist hashes against the cur
 
 #!/usr/bin/env bash
 
+#Step 5 – Verification of Artist Folders
+
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 
@@ -617,6 +628,8 @@ This step audits the structural integrity of the library itself. It scans for an
 ```bash
 
 #!/usr/bin/env bash
+
+#Step 6 – Auditing the Library
 
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
