@@ -45,4 +45,6 @@ You should only work on a COPY of your Original Library when processing these sc
 
 Before promotion, files should be cleaned, verified with flac -t, and protected with two layers of SHA-512 checksums.
 
+NOTE: Step 5 – Verify Artist Folders contains the required verification logic for ARTIST.sha512sums.txt. ARTIST.sha512sums.txt stores hashes of album contents, not individual files. It must be verified using the Artist verification routine, which recreates each album hash and compares it. Do not use sha512sum -c on Artist manifests. Replacing this logic with standard checksum verification will cause Artist-level verification to fail because ARTIST.sha512sums.txt is designed as the upper tier of the two-tier verification system.
+
 The purpose is to ensure you have a verifiable library that can be copied, backed up, and restored repeatedly while still matching the validated cleaned copy.
