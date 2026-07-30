@@ -166,10 +166,8 @@ This step establishes the cryptographic fingerprint for individual files located
 ```bash
 
 #!/usr/bin/env bash
-
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
-
 # --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
 if [ ! -w "$PWD" ]; then
     echo ""
@@ -184,7 +182,6 @@ if [ ! -w "$PWD" ]; then
     echo ""
     exit 1
 fi
-
 if ! find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
     : # All good, owned by current user
 else
@@ -197,25 +194,18 @@ else
     fi
 fi
 # ---------------------------------------------
-
-# Detect current folder depth to set search parameters
-current_depth=$(echo "$PWD" | tr -cd '/' | wc -c)
-
-case $current_depth in
-    3) min=2; max=2 ;;
-    4) min=1; max=1 ;;
-    5) min=0; max=0 ;;
-    *)
-        echo "Error: Please run from Parent, Artist, or Album folder."
-        exit 1
-        ;;
-esac
-
+# Detect folder level by probing actual directory structure below $PWD
+# (relative to $PWD, not absolute path depth -- works regardless of mount point)
+if find "$PWD" -mindepth 2 -maxdepth 2 -type d -print -quit 2>/dev/null | grep -q .; then
+    min=2; max=2   # Parent folder: Parent/Artist/Album
+elif find "$PWD" -mindepth 1 -maxdepth 1 -type d -print -quit 2>/dev/null | grep -q .; then
+    min=1; max=1   # Artist folder: Artist/Album
+else
+    min=0; max=0   # Album folder itself
+fi
 mapfile -d '' dirs < <(find "$PWD" -mindepth $min -maxdepth $max -type d -print0 | LC_ALL=C sort -z)
-
 total=${#dirs[@]}
 i=0
-
 for d in "${dirs[@]}"; do
     i=$((i+1))
     
@@ -226,20 +216,17 @@ for d in "${dirs[@]}"; do
     else
         album=$(basename "$d"); artist=$(basename "$(dirname "$d")"); label="$artist-$album"
     fi
-
     (
         cd "$d" || exit 1
         shopt -s nullglob
         files=(*)
         shopt -u nullglob
-
         target_files=()
         for f in "${files[@]}"; do
             if [[ -f "$f" && "$f" != "ARTIST.sha512sums.txt" && "$f" != "ALBUM.sha512sums.txt" ]]; then
                 target_files+=("$f")
             fi
         done
-
         if [ ${#target_files[@]} -gt 0 ]; then
             sha512sum "${target_files[@]}" > "ALBUM.sha512sums.txt" 2>"$LOGDIR/temp_err.log"
             exit $?
@@ -247,9 +234,7 @@ for d in "${dirs[@]}"; do
             exit 0
         fi
     )
-
     rc=$?
-
     if [ $rc -ne 0 ]; then
         echo "FAIL [$i/$total] $label"
         sed "s/^/[$i\/$total] ERROR: $label :: /" "$LOGDIR/temp_err.log" >> "$LOGDIR/step2_errors.log"
