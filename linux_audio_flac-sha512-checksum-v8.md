@@ -23,6 +23,7 @@ To successfully execute the scripts in this guide, your system must have the fol
 To prioritize strict data preservation and structural clarity, this workflow utilizes a specific tiered naming convention for its manifests: ARTIST.sha512sums.txt for top-level artist directories and ALBUM.sha512sums.txt for individual album folders. Maintaining this exact convention is critical for the automated auditing scripts and Nemo action configurations to function correctly.
 
 -- Library Structure
+```
 
 Parent/
 ├── Artist1/
@@ -33,7 +34,7 @@ Parent/
 │   └── Album2/
 └── Artist2/
 
-
+```
 ---
 
 03. Design Philosophy
@@ -71,6 +72,7 @@ This step scans the Parent folder, all Artist folders, and all Album folders to 
 Before generating checksum manifests, it is critical to ensure that no unexpected or extraneous files are included in the cryptographic hash baseline. This step flags any files that are not authorized audio files, valid album artwork, or existing checksum manifests.
 
 --- Bash Script Start ---
+```bash
 
 #!/usr/bin/env bash
 
@@ -134,12 +136,21 @@ fi
     echo "Stray file audit completed."
 } | tee "$LOGDIR/step1_run.log"
 
+
+```
 --- Bash Script End ---
 
 -- Review Results
 
 View the generated reports by running:
+
+--- Bash Script Start ---
+```bash
+
 cat "$LOGDIR/step1_run.log"
+
+```
+--- Bash Script End ---
 
 ---
 
@@ -152,6 +163,7 @@ cat "$LOGDIR/step1_run.log"
 This step establishes the cryptographic fingerprint for individual files located inside nested Album folders. It creates the standard ALBUM.sha512sums.txt file.
 
 --- Bash Script Start ---
+```bash
 
 #!/usr/bin/env bash
 
@@ -247,12 +259,20 @@ for d in "${dirs[@]}"; do
 done | tee "$LOGDIR/step2_run.log"
 rm -f "$LOGDIR/temp_err.log"
 
+```
 --- Bash Script End ---
 
 -- Review Results
 
 View the generated reports by running:
+
+--- Bash Script Start ---
+```bash
+
 cat "$LOGDIR/step2_run.log"
+
+```
+--- Bash Script End ---
 
 ---
 
@@ -265,6 +285,7 @@ cat "$LOGDIR/step2_run.log"
 This step validates the integrity of the individual album folders, confirming that no audio files have suffered bit rot or silent corruption.
 
 --- Bash Script Start ---
+```bash
 
 #!/usr/bin/env bash
 
@@ -333,12 +354,20 @@ for m in "${manifests[@]}"; do
 done | tee "$LOGDIR/step3_run.log"
 rm -f "$LOGDIR/temp_err.log"
 
+```
 --- Bash Script End ---
 
 -- Review Results
 
 View the generated reports by running:
+
+--- Bash Script Start ---
+```bash
+
 cat "$LOGDIR/step3_run.log"
+
+```
+--- Bash Script End ---
 
 ---
 
@@ -351,6 +380,7 @@ cat "$LOGDIR/step3_run.log"
 This step establishes the baseline cryptographic fingerprint for files located directly within the parent Artist directories. It creates the standard ARTIST.sha512sums.txt manifest.
 
 --- Bash Script Start ---
+```bash
 
 #!/usr/bin/env bash
 
@@ -449,13 +479,22 @@ for artist in "${artists[@]}"; do
 
 done | tee -a "$RUNLOG"
 
+```
+
 --- Bash Script End ---
 
 -- Review Results
 
 View the generated reports by running:
+
+--- Bash Script Start ---
+
+```bash
+
 cat "$LOGDIR/step4_run.log"
 
+```
+--- Bash Script End ---
 
 ---
 
@@ -468,6 +507,7 @@ cat "$LOGDIR/step4_run.log"
 This step validates the integrity of the top-level artist hashes against the current state of the files to detect missing or corrupted data.
 
 --- Bash Script Start ---
+```bash
 
 #!/usr/bin/env bash
 
@@ -563,12 +603,20 @@ if [ "$missing" -gt 0 ]; then
     done
 fi
 
+```
 --- Bash Script End ---
 
 -- Review Results
 
 View the generated reports by running:
+
+--- Bash Script Start ---
+```bash
+
 cat "$LOGDIR/step5_run.log"
+
+```
+--- Bash Script End ---
 
 ---
 
@@ -581,6 +629,7 @@ cat "$LOGDIR/step5_run.log"
 This step audits the structural integrity of the library itself. It scans for any directories that are missing their required manifest files, or files that violate the strict naming convention, ensuring nothing escapes the verification safety net.
 
 --- Bash Script Start ---
+```bash
 
 #!/usr/bin/env bash
 
@@ -646,14 +695,22 @@ done
 
 echo "Audit complete. Check step6 logs for detailed anomalies." | tee -a "$LOGDIR/step6_run.log"
 
+```
 --- Bash Script End ---
 
 -- Review Results
 
 View the generated reports by running:
+
+--- Bash Script Start ---
+```bash
+
 cat "$LOGDIR/step6_run.log"
 
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+```
+--- Bash Script End ---
+
+--
 
 11. Troubleshooting & Reference Information
 
