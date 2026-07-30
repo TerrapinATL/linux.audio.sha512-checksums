@@ -505,98 +505,102 @@ This step validates the integrity of the top-level artist hashes against the cur
 
 #!/usr/bin/env bash
 
-#Step 5 – Verification of Artist Folders
+# Step 5 – Verify Artist Folders
 
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 
-# --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
-if [ ! -w "$PWD" ]; then
-    echo ""
-    echo "=========================================================="
-    echo "CRITICAL ERROR: Write/operational permission denied on $PWD."
-    echo "This often happens if a drive was formatted on a desktop system"
-    echo "and the root filesystem is locked to 'root'."
-    echo "=========================================================="
-    echo "Off-script solution:"
-    echo "Fix mount point or drive ownership by running:"
-    echo "  sudo chown -R \$USER:\$USER \"$PWD\""
-    echo ""
+: > "$LOGDIR/step5_errors.log"
+: > "$LOGDIR/step5_run.log"
+
+echo "==================================================="
+echo " Verifying ARTIST SHA512 Checksums"
+echo "==================================================="
+echo
+
+# Must be run from Parent folder
+if [ ! -d "$PWD" ]; then
+    echo "Invalid directory."
     exit 1
 fi
 
-if ! find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
-    : # All good, owned by current user
-else
-    echo "Notice: Some files/folders are not owned by \$USER."
-    read -rp "Fix permissions now using sudo chown? (y/N): " fix_choice
-    if [[ "$fix_choice" =~ ^[Yy]$ ]]; then
-        sudo chown -R "$USER:$USER" "$PWD" || { echo "chown failed. Check sudo privileges."; exit 1; }
-    else
-        echo "Aborting due to permission mismatch."; exit 1
-    fi
-fi
-# ---------------------------------------------
+mapfile -d '' artists < <(
+    find "$PWD" -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z
+)
 
-mapfile -d '' artist_dirs < <(find "$PWD" -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z)
-mapfile -d '' manifests < <(find "$PWD" -type f -name "ARTIST.sha512sums.txt" -print0 | LC_ALL=C sort -z)
-
-total_artists=${#artist_dirs[@]}
-total=${#manifests[@]}
-i=0
+total=${#artists[@]}
+count=0
 missing=0
-missing_names=()
 
-: > "$LOGDIR/step5_missing.log"
+for artist_dir in "${artists[@]}"; do
 
-for a in "${artist_dirs[@]}"; do
-    artist_name=$(basename "$a")
-    if [ ! -f "$a/ARTIST.sha512sums.txt" ]; then
+    count=$((count+1))
+    artist=$(basename "$artist_dir")
+
+    manifest="$artist_dir/ARTIST.sha512sums.txt"
+
+    if [ ! -f "$manifest" ]; then
+        echo "MISSING [$count/$total] $artist"
+        echo "$artist :: Missing ARTIST.sha512sums.txt" >> "$LOGDIR/step5_errors.log"
         missing=$((missing+1))
-        missing_names+=("$artist_name")
-        echo "MISSING $artist_name :: no ARTIST.sha512sums.txt in $a" >> "$LOGDIR/step5_missing.log"
+        continue
     fi
-done
 
-if [ "$total" -eq 0 ]; then
-    echo "ALERT: no ARTIST.sha512sums.txt files found anywhere under $PWD ($total_artists artist folders scanned, 0 have manifests)."
-    echo "Nothing to verify — check you're in the right directory or that checksums were generated here."
-    exit 1
-fi
+    failed=0
 
-if [ "$missing" -gt 0 ]; then
-    echo "ALERT: $missing of $total_artists artist folder(s) have no ARTIST.sha512sums.txt:"
-    for name in "${missing_names[@]}"; do
-        echo "  - $name"
-    done
-    echo "(Full detail in $LOGDIR/step5_missing.log)"
-    echo ""
-fi
+    while IFS= read -r line; do
 
-for m in "${manifests[@]}"; do
-    i=$((i+1))
-    dir_path=$(dirname "$m")
-    artist=$(basename "$dir_path")
-    (
-        cd "$dir_path" || exit 1
-        sha512sum -c --quiet --strict "ARTIST.sha512sums.txt" 2>&1
-    ) > "$LOGDIR/temp_err.log"
-    rc=$?
-    if [ $rc -ne 0 ]; then
-        echo "FAIL [$i/$total] $artist"
-        sed "s/^/[$i\/$total] ERROR: $artist :: /" "$LOGDIR/temp_err.log" >> "$LOGDIR/step5_errors.log"
+        [ -z "$line" ] && continue
+
+        stored_hash=${line%%  *}
+        album=${line#*  }
+
+        if [ ! -d "$artist_dir/$album" ]; then
+            echo "$artist :: Missing album: $album" >> "$LOGDIR/step5_errors.log"
+            failed=1
+            continue
+        fi
+
+        actual_hash=$(
+            cd "$artist_dir/$album" || exit 1
+
+            find . \
+                -type f \
+                ! -name ALBUM.sha512sums.txt \
+                -print0 |
+            LC_ALL=C sort -z |
+            xargs -0 sha512sum |
+            sha512sum |
+            cut -d' ' -f1
+        )
+
+        if [ "$stored_hash" != "$actual_hash" ]; then
+            echo "$artist :: MISMATCH $album" >> "$LOGDIR/step5_errors.log"
+            failed=1
+        fi
+
+    done < "$manifest"
+
+    if [ "$failed" -eq 0 ]; then
+        echo "OK   [$count/$total] $artist"
     else
-        echo "OK [$i/$total] $artist"
+        echo "FAIL [$count/$total] $artist"
     fi
-done | tee "$LOGDIR/step5_run.log"
-rm -f "$LOGDIR/temp_err.log"
 
-if [ "$missing" -gt 0 ]; then
-    echo ""
-    echo "Reminder: $missing artist folder(s) were skipped (no manifest):"
-    for name in "${missing_names[@]}"; do
-        echo "  - $name"
-    done
+done | tee "$LOGDIR/step5_run.log"
+
+echo
+echo "==================================================="
+echo " Verification Complete"
+echo "==================================================="
+
+if [ -s "$LOGDIR/step5_errors.log" ]; then
+    echo
+    echo "Errors found. See:"
+    echo "$LOGDIR/step5_errors.log"
+else
+    echo
+    echo "All artist folders verified successfully."
 fi
 
 ```
