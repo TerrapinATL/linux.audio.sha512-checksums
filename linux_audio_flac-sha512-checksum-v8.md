@@ -409,6 +409,19 @@ else
 fi
 # ---------------------------------------------
 
+# --- DIRECTORY LEVEL CHECK: must be run from the Parent (library root) folder ---
+if ! find "$PWD" -mindepth 2 -maxdepth 2 -type d -print -quit 2>/dev/null | grep -q .; then
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR: This does not look like the Parent library folder."
+    echo "Step 4 must be run from Parent/ (containing Artist/Album subfolders),"
+    echo "not from inside an individual Artist or Album folder."
+    echo "=========================================================="
+    echo ""
+    exit 1
+fi
+# ---------------------------------------------
+
 RUNLOG="$LOGDIR/step4_run.log"
 ERRLOG="$LOGDIR/step4_errors.log"
 
@@ -444,6 +457,7 @@ for artist in "${artists[@]}"; do
 
             hash=$(
                 cd "$album" || exit 1
+                set -o pipefail
 
                 find . -type f \
                     ! -name "ALBUM.sha512sums.txt" \
@@ -453,6 +467,12 @@ for artist in "${artists[@]}"; do
                 sha512sum |
                 cut -d" " -f1
             )
+            hash_rc=$?
+
+            if [ $hash_rc -ne 0 ] || [ -z "$hash" ]; then
+                echo "ERROR: Failed to compute hash for album: $album_name (artist: $name)" >&2
+                exit 1
+            fi
 
             printf "%s  %s\n" "$hash" "$album_name" >> ARTIST.sha512sums.txt
         done
@@ -468,7 +488,6 @@ for artist in "${artists[@]}"; do
         echo "OK [$i/$total] $name"
     fi
 
-    cat "$errfile" >> "$RUNLOG"
     rm -f "$errfile"
 
 done | tee -a "$RUNLOG"
@@ -524,6 +543,19 @@ if [ ! -d "$PWD" ]; then
     exit 1
 fi
 
+# --- DIRECTORY LEVEL CHECK: must be run from the Parent (library root) folder ---
+if ! find "$PWD" -mindepth 2 -maxdepth 2 -type d -print -quit 2>/dev/null | grep -q .; then
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR: This does not look like the Parent library folder."
+    echo "Step 5 must be run from Parent/ (containing Artist/Album subfolders),"
+    echo "not from inside an individual Artist or Album folder."
+    echo "=========================================================="
+    echo ""
+    exit 1
+fi
+# ---------------------------------------------
+
 mapfile -d '' artists < <(
     find "$PWD" -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z
 )
@@ -563,6 +595,7 @@ for artist_dir in "${artists[@]}"; do
 
         actual_hash=$(
             cd "$artist_dir/$album" || exit 1
+            set -o pipefail
 
             find . \
                 -type f \
@@ -573,6 +606,13 @@ for artist_dir in "${artists[@]}"; do
             sha512sum |
             cut -d' ' -f1
         )
+        hash_rc=$?
+
+        if [ $hash_rc -ne 0 ]; then
+            echo "$artist :: READ ERROR while hashing album: $album" >> "$LOGDIR/step5_errors.log"
+            failed=1
+            continue
+        fi
 
         if [ "$stored_hash" != "$actual_hash" ]; then
             echo "$artist :: MISMATCH $album" >> "$LOGDIR/step5_errors.log"
