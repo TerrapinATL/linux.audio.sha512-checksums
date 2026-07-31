@@ -378,8 +378,43 @@ This step establishes the baseline cryptographic fingerprint for files located d
 
 #Step 4 – Create SHA-512 Checksums for Artist Folders
 
-if [ -z "$(find . -mindepth 2 -maxdepth 2 -type d)" ]; then > ARTIST.sha512sums.txt; find . -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z | while IFS= read -r -d '' album; do name=$(basename "$album"); hash=$(cd "$album" && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1); printf "%s  %s\n" "$hash" "$name" >> ARTIST.sha512sums.txt; done; echo "OK: $(basename "$PWD")" >&2; else total=$(find . -mindepth 1 -maxdepth 1 -type d | wc -l); i=0; find . -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z | while IFS= read -r -d '' artist; do i=$((i+1)); (cd "$artist" && > ARTIST.sha512sums.txt && find . -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z | while IFS= read -r -d '' album; do name=$(basename "$album"); hash=$(cd "$album" && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1); printf "%s  %s\n" "$hash" "$name" >> ARTIST.sha512sums.txt; done); echo "[$i/$total] OK: $(basename "$artist")" >&2; done; fi
+if [ -z "$(find . -mindepth 2 -maxdepth 2 -type d)" ]; then
+    > ARTIST.sha512sums.txt
 
+    find . -mindepth 1 -maxdepth 1 -type d -print0 |
+    LC_ALL=C sort -z |
+    while IFS= read -r -d '' album; do
+        name=$(basename "$album")
+        hash=$(cd "$album" && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1)
+        printf "%s  %s\n" "$hash" "$name" >> ARTIST.sha512sums.txt
+    done
+
+    echo "OK: $(basename "$PWD")" >&2
+
+else
+    total=$(find . -mindepth 1 -maxdepth 1 -type d | wc -l)
+    i=0
+
+    find . -mindepth 1 -maxdepth 1 -type d -print0 |
+    LC_ALL=C sort -z |
+    while IFS= read -r -d '' artist; do
+        i=$((i+1))
+
+        (
+            cd "$artist" &&
+            > ARTIST.sha512sums.txt &&
+            find . -mindepth 1 -maxdepth 1 -type d -print0 |
+            LC_ALL=C sort -z |
+            while IFS= read -r -d '' album; do
+                name=$(basename "$album")
+                hash=$(cd "$album" && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1)
+                printf "%s  %s\n" "$hash" "$name" >> ARTIST.sha512sums.txt
+            done
+        )
+
+        echo "[$i/$total] OK: $(basename "$artist")" >&2
+    done
+fi
 
 ```
 
@@ -415,8 +450,40 @@ This step validates the integrity of the top-level artist hashes against the cur
 
 # Step 5 – Verify Artist Folders
 
-if [ -z "$(find . -mindepth 2 -maxdepth 2 -type d)" ]; then artist=$(basename "$PWD"); echo "=== $artist ==="; if [ -f "ARTIST.sha512sums.txt" ]; then while IFS=" " read -r stored_hash album; do actual_hash=$(cd "$album" 2>/dev/null && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1); if [ "$stored_hash" = "$actual_hash" ]; then echo "OK $album"; else echo "MISMATCH $album"; fi; done < "ARTIST.sha512sums.txt"; else echo "MISSING ARTIST.sha512sums.txt" >&2; fi; else for d in ./*/; do [ -d "$d" ] || continue; artist=$(basename "$d"); echo "   === $artist ==="; if [ -f "$d/ARTIST.sha512sums.txt" ]; then while IFS=" " read -r stored_hash album; do actual_hash=$(cd "$d/$album" 2>/dev/null && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1); if [ "$stored_hash" = "$actual_hash" ]; then echo "OK $album"; else echo "MISMATCH $album"; fi; done < "$d/ARTIST.sha512sums.txt"; else echo "MISSING ARTIST.sha512sums.txt" >&2; fi; done; fi
-
+if [ -z "$(find . -mindepth 2 -maxdepth 2 -type d)" ]; then
+    artist=$(basename "$PWD")
+    echo "=== $artist ==="
+    if [ -f "ARTIST.sha512sums.txt" ]; then
+        while IFS=" " read -r stored_hash album; do
+            actual_hash=$(cd "$album" 2>/dev/null && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1)
+            if [ "$stored_hash" = "$actual_hash" ]; then
+                echo "OK $album"
+            else
+                echo "MISMATCH $album"
+            fi
+        done < "ARTIST.sha512sums.txt"
+    else
+        echo "MISSING ARTIST.sha512sums.txt" >&2
+    fi
+else
+    for d in ./*/; do
+        [ -d "$d" ] || continue
+        artist=$(basename "$d")
+        echo "    === $artist ==="
+        if [ -f "$d/ARTIST.sha512sums.txt" ]; then
+            while IFS=" " read -r stored_hash album; do
+                actual_hash=$(cd "$d/$album" 2>/dev/null && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1)
+                if [ "$stored_hash" = "$actual_hash" ]; then
+                    echo "OK $album"
+                else
+                    echo "MISMATCH $album"
+                fi
+            done < "$d/ARTIST.sha512sums.txt"
+        else
+            echo "MISSING ARTIST.sha512sums.txt" >&2
+        fi
+    done
+fi
 
 ```
 --- Bash Script End ---
