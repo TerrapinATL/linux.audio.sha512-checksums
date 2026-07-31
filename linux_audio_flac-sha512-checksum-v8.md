@@ -526,55 +526,49 @@ This step validates the integrity of the top-level artist hashes against the cur
 
 # Step 5 – Verify Artist Folders
 
+set -o pipefail
+
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 
-: > "$LOGDIR/step5_errors.log"
-: > "$LOGDIR/step5_run.log"
+: >"$LOGDIR/step5_errors.log"
+: >"$LOGDIR/step5_run.log"
 
 echo "==================================================="
 echo " Verifying ARTIST SHA512 Checksums"
 echo "==================================================="
 echo
 
-# Must be run from Parent folder
-if [ ! -d "$PWD" ]; then
-    echo "Invalid directory."
+# Must be run from the library root
+if ! find . -mindepth 2 -maxdepth 2 -type d -print -quit | grep -q .; then
+    echo
+    echo "=========================================================="
+    echo "CRITICAL ERROR"
+    echo "Run this script from the Parent library folder."
+    echo "Expected: Parent/Artist/Album"
+    echo "=========================================================="
+    echo
     exit 1
 fi
-
-# --- DIRECTORY LEVEL CHECK: must be run from the Parent (library root) folder ---
-if ! find "$PWD" -mindepth 2 -maxdepth 2 -type d -print -quit 2>/dev/null | grep -q .; then
-    echo ""
-    echo "=========================================================="
-    echo "CRITICAL ERROR: This does not look like the Parent library folder."
-    echo "Step 5 must be run from Parent/ (containing Artist/Album subfolders),"
-    echo "not from inside an individual Artist or Album folder."
-    echo "=========================================================="
-    echo ""
-    exit 1
-fi
-# ---------------------------------------------
 
 mapfile -d '' artists < <(
-    find "$PWD" -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z
+    find . -mindepth 1 -maxdepth 1 -type d -print0 |
+    LC_ALL=C sort -z
 )
 
 total=${#artists[@]}
 count=0
-missing=0
 
 for artist_dir in "${artists[@]}"; do
 
-    count=$((count+1))
-    artist=$(basename "$artist_dir")
+    ((count++))
 
+    artist=$(basename "$artist_dir")
     manifest="$artist_dir/ARTIST.sha512sums.txt"
 
-    if [ ! -f "$manifest" ]; then
+    if [[ ! -f "$manifest" ]]; then
         echo "MISSING [$count/$total] $artist"
-        echo "$artist :: Missing ARTIST.sha512sums.txt" >> "$LOGDIR/step5_errors.log"
-        missing=$((missing+1))
+        echo "$artist :: Missing ARTIST.sha512sums.txt" >>"$LOGDIR/step5_errors.log"
         continue
     fi
 
@@ -582,49 +576,49 @@ for artist_dir in "${artists[@]}"; do
 
     while IFS= read -r line; do
 
-        [ -z "$line" ] && continue
+        [[ -z "$line" || "$line" == \#* ]] && continue
 
         stored_hash=${line%%  *}
         album=${line#*  }
 
-        if [ ! -d "$artist_dir/$album" ]; then
-            echo "$artist :: Missing album: $album" >> "$LOGDIR/step5_errors.log"
+        album_dir="$artist_dir/$album"
+
+        if [[ ! -d "$album_dir" ]]; then
+            echo "$artist :: Missing album: $album" >>"$LOGDIR/step5_errors.log"
             failed=1
             continue
         fi
 
         actual_hash=$(
-            cd "$artist_dir/$album" || exit 1
-            set -o pipefail
+            cd "$album_dir" || exit 1
 
             find . \
                 -type f \
-                ! -name ALBUM.sha512sums.txt \
+                ! -name 'ALBUM.sha512sums.txt' \
                 -print0 |
             LC_ALL=C sort -z |
-            xargs -0 sha512sum |
+            xargs -0 sha512sum 2>/dev/null |
             sha512sum |
-            cut -d' ' -f1
+            awk '{print $1}'
         )
-        hash_rc=$?
 
-        if [ $hash_rc -ne 0 ]; then
-            echo "$artist :: READ ERROR while hashing album: $album" >> "$LOGDIR/step5_errors.log"
+        if [[ $? -ne 0 || -z "$actual_hash" ]]; then
+            echo "$artist :: Error hashing album: $album" >>"$LOGDIR/step5_errors.log"
             failed=1
             continue
         fi
 
-        if [ "$stored_hash" != "$actual_hash" ]; then
-            echo "$artist :: MISMATCH $album" >> "$LOGDIR/step5_errors.log"
+        if [[ "$stored_hash" != "$actual_hash" ]]; then
+            echo "$artist :: MISMATCH: $album" >>"$LOGDIR/step5_errors.log"
             failed=1
         fi
 
-    done < "$manifest"
+    done <"$manifest"
 
-    if [ "$failed" -eq 0 ]; then
-        echo "OK   [$count/$total] $artist"
-    else
+    if ((failed)); then
         echo "FAIL [$count/$total] $artist"
+    else
+        echo "OK   [$count/$total] $artist"
     fi
 
 done | tee "$LOGDIR/step5_run.log"
@@ -634,9 +628,9 @@ echo "==================================================="
 echo " Verification Complete"
 echo "==================================================="
 
-if [ -s "$LOGDIR/step5_errors.log" ]; then
+if [[ -s "$LOGDIR/step5_errors.log" ]]; then
     echo
-    echo "Errors found. See:"
+    echo "Errors found:"
     echo "$LOGDIR/step5_errors.log"
 else
     echo
