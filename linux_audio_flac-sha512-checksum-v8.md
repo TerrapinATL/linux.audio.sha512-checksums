@@ -376,7 +376,7 @@ This step establishes the baseline cryptographic fingerprint for files located d
 
 #!/usr/bin/env bash
 
-#Step 4 – Create SHA-512 Checksums for Artist Folders
+#Step 4 – Create SHA-512 Checksums for Artist Folders (Full Lockdown)
 
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
@@ -396,37 +396,67 @@ if [ ! -w "$PWD" ]; then
     exit 1
 fi
 
-if ! find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
-    : # All good, owned by current user
-else
+if find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
     echo "Notice: Some files/folders are not owned by \$USER."
     read -rp "Fix permissions now using sudo chown? (y/N): " fix_choice
+
     if [[ "$fix_choice" =~ ^[Yy]$ ]]; then
-        sudo chown -R "$USER:$USER" "$PWD" || { echo "chown failed. Check sudo privileges."; exit 1; }
+        sudo chown -R "$USER:$USER" "$PWD" || {
+            echo "chown failed. Check sudo privileges."
+            exit 1
+        }
     else
-        echo "Aborting due to permission mismatch."; exit 1
+        echo "Aborting due to permission mismatch."
+        exit 1
     fi
 fi
 # ---------------------------------------------
 
-# --- DIRECTORY LEVEL CHECK: must be run from the Parent (library root) folder ---
+
+# --- DIRECTORY STRUCTURE CHECK: Parent > Artist > Album ---
+if [ -f "ARTIST.sha512sums.txt" ] || [ -f "ALBUM.sha512sums.txt" ]; then
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR: This appears to be an Artist or Album folder."
+    echo "Run Step 4 from the Parent folder containing Artist folders."
+    echo "=========================================================="
+    echo ""
+    exit 1
+fi
+
+
+artist_count=$(find "$PWD" -mindepth 1 -maxdepth 1 -type d | wc -l)
+
+if [ "$artist_count" -eq 0 ]; then
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR: No Artist folders found."
+    echo "This does not appear to be a Parent library folder."
+    echo "=========================================================="
+    echo ""
+    exit 1
+fi
+
+
 if ! find "$PWD" -mindepth 2 -maxdepth 2 -type d -print -quit 2>/dev/null | grep -q .; then
     echo ""
     echo "=========================================================="
-    echo "CRITICAL ERROR: This does not look like the Parent library folder."
-    echo "Step 4 must be run from Parent/ (containing Artist/Album subfolders),"
-    echo "not from inside an individual Artist or Album folder."
+    echo "CRITICAL ERROR: No Album folders found below Artist level."
+    echo "Expected structure:"
+    echo "Parent/Artist/Album"
     echo "=========================================================="
     echo ""
     exit 1
 fi
 # ---------------------------------------------
 
+
 RUNLOG="$LOGDIR/step4_run.log"
 ERRLOG="$LOGDIR/step4_errors.log"
 
 : > "$RUNLOG"
 : > "$ERRLOG"
+
 
 mapfile -d '' artists < <(
     find "$PWD" -mindepth 1 -maxdepth 1 -type d -print0 |
@@ -436,7 +466,9 @@ mapfile -d '' artists < <(
 total=${#artists[@]}
 i=0
 
+
 for artist in "${artists[@]}"; do
+
     i=$((i+1))
     name=$(basename "$artist")
 
@@ -445,50 +477,52 @@ for artist in "${artists[@]}"; do
     (
         cd "$artist" || exit 1
 
+        echo "Processing Artist [$i/$total]: $name"
+
         : > ARTIST.sha512sums.txt
 
-        mapfile -d '' albums < <(
-            find . -mindepth 1 -maxdepth 1 -type d -print0 |
-            LC_ALL=C sort -z
-        )
+        find . \
+            -type f \
+            ! -name "ARTIST.sha512sums.txt" \
+            -print0 |
+        LC_ALL=C sort -z |
+        while IFS= read -r -d '' file; do
 
-        for album in "${albums[@]}"; do
-            album_name=$(basename "$album")
+            echo "Hashing: $file"
 
-            hash=$(
-                cd "$album" || exit 1
-                set -o pipefail
+            sha512sum "$file"
 
-                find . -type f \
-                    ! -name "ALBUM.sha512sums.txt" \
-                    -print0 |
-                LC_ALL=C sort -z |
-                xargs -0 sha512sum |
-                sha512sum |
-                cut -d" " -f1
-            )
-            hash_rc=$?
+        done > ARTIST.sha512sums.txt
 
-            if [ $hash_rc -ne 0 ] || [ -z "$hash" ]; then
-                echo "ERROR: Failed to compute hash for album: $album_name (artist: $name)" >&2
-                exit 1
-            fi
 
-            printf "%s  %s\n" "$hash" "$album_name" >> ARTIST.sha512sums.txt
-        done
+        if [ ! -s ARTIST.sha512sums.txt ]; then
+            echo "ERROR: ARTIST.sha512sums.txt was not created." >&2
+            exit 1
+        fi
+
 
     ) 2>"$errfile"
 
+
     rc=$?
 
+
     if [ $rc -ne 0 ]; then
+
         echo "FAIL [$i/$total] $name"
-        sed "s/^/[$i\/$total] ERROR: $name :: /" "$errfile" >> "$ERRLOG"
+
+        sed "s/^/[$i\/$total] ERROR: $name :: /" \
+            "$errfile" >> "$ERRLOG"
+
     else
+
         echo "OK [$i/$total] $name"
+
     fi
 
+
     rm -f "$errfile"
+
 
 done | tee -a "$RUNLOG"
 
