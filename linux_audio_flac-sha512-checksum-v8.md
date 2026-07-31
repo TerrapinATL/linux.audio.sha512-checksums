@@ -376,92 +376,138 @@ This step establishes the baseline cryptographic fingerprint for files located d
 
 #!/usr/bin/env bash
 
-#Step 4 – Create SHA-512 Checksums for Artist Folders (Full Lockdown)
+# Step 4 – Create SHA-512 Checksums for Artist Folders (Full Lockdown)
 
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
 
-# --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
+# --- ERROR HANDLER ---
+error_exit() {
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR:"
+    echo "$1"
+    echo ""
+    echo "No checksum files were created."
+    echo "=========================================================="
+    echo ""
+    return 1
+}
+# ---------------------------------------------
+
+
+# --- MAIN FUNCTION ---
+main() {
+
+
+# --- UNIVERSAL PERMISSION CHECK ---
 if [ ! -w "$PWD" ]; then
-    echo ""
-    echo "=========================================================="
-    echo "CRITICAL ERROR: Write/operational permission denied on $PWD."
-    echo "This often happens if a drive was formatted on a desktop system"
-    echo "and the root filesystem is locked to 'root'."
-    echo "=========================================================="
-    echo "Off-script solution:"
-    echo "Fix mount point or drive ownership by running:"
-    echo "  sudo chown -R \$USER:\$USER \"$PWD\""
-    echo ""
-    exit 1
-fi
-
-if find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
-    echo "Notice: Some files/folders are not owned by \$USER."
-    read -rp "Fix permissions now using sudo chown? (y/N): " fix_choice
-
-    if [[ "$fix_choice" =~ ^[Yy]$ ]]; then
-        sudo chown -R "$USER:$USER" "$PWD" || {
-            echo "chown failed. Check sudo privileges."
-            exit 1
-        }
-    else
-        echo "Aborting due to permission mismatch."
-        exit 1
-    fi
+    error_exit "Write permission denied on current folder:
+$PWD"
+    return 1
 fi
 # ---------------------------------------------
 
 
-# --- DIRECTORY STRUCTURE CHECK: Parent > Artist > Album ---
+# --- PARENT FOLDER VALIDATION ---
+#
+# Required structure:
+#
+# Parent/
+# └── Artist/
+#     └── Album/
+#
+
 if [ -f "ARTIST.sha512sums.txt" ] || [ -f "ALBUM.sha512sums.txt" ]; then
-    echo ""
-    echo "=========================================================="
-    echo "CRITICAL ERROR: This appears to be an Artist or Album folder."
-    echo "Run Step 4 from the Parent folder containing Artist folders."
-    echo "=========================================================="
-    echo ""
-    exit 1
+
+    error_exit "This appears to be an Artist or Album folder.
+
+Run Step 4 from the Parent folder containing Artist folders."
+
+    return 1
 fi
 
 
-artist_count=$(find "$PWD" -mindepth 1 -maxdepth 1 -type d | wc -l)
+if find . -maxdepth 1 -type f \
+    \( -iname "*.flac" -o -iname "*.mp3" -o -iname "*.wav" \) \
+    -print -quit | grep -q .; then
 
-if [ "$artist_count" -eq 0 ]; then
-    echo ""
-    echo "=========================================================="
-    echo "CRITICAL ERROR: No Artist folders found."
-    echo "This does not appear to be a Parent library folder."
-    echo "=========================================================="
-    echo ""
-    exit 1
+    error_exit "Audio files found directly in current folder.
+
+This does not appear to be a Parent folder."
+
+    return 1
 fi
 
 
-if ! find "$PWD" -mindepth 2 -maxdepth 2 -type d -print -quit 2>/dev/null | grep -q .; then
-    echo ""
-    echo "=========================================================="
-    echo "CRITICAL ERROR: No Album folders found below Artist level."
-    echo "Expected structure:"
-    echo "Parent/Artist/Album"
-    echo "=========================================================="
-    echo ""
-    exit 1
+mapfile -d '' artists < <(
+    find "$PWD" \
+        -mindepth 1 \
+        -maxdepth 1 \
+        -type d \
+        -print0 |
+    LC_ALL=C sort -z
+)
+
+
+if [ "${#artists[@]}" -eq 0 ]; then
+
+    error_exit "No Artist folders found.
+
+Expected structure:
+Parent/Artist/Album"
+
+    return 1
 fi
-# ---------------------------------------------
 
 
-RUNLOG="$LOGDIR/step4_run.log"
-ERRLOG="$LOGDIR/step4_errors.log"
+album_found=0
+
+for artist in "${artists[@]}"; do
+
+    if find "$artist" \
+        -mindepth 1 \
+        -maxdepth 1 \
+        -type d \
+        -print -quit | grep -q .; then
+
+        album_found=1
+        break
+
+    fi
+
+done
+
+
+if [ "$album_found" -ne 1 ]; then
+
+    error_exit "No Album folders found below Artist level.
+
+Expected structure:
+Parent/Artist/Album"
+
+    return 1
+fi
+
+
+echo ""
+echo "=========================================================="
+echo "PARENT FOLDER VERIFIED"
+echo "Location:"
+echo "$PWD"
+echo ""
+echo "Artists found: ${#artists[@]}"
+echo "Ready to create ARTIST.sha512sums.txt files."
+echo "=========================================================="
+echo ""
+
+
+RUNLOG="$LOGDIR/step4_create_artist_run.log"
+ERRLOG="$LOGDIR/step4_create_artist_errors.log"
 
 : > "$RUNLOG"
 : > "$ERRLOG"
 
-
-mapfile -d '' artists < <(
-    find "$PWD" -mindepth 1 -maxdepth 1 -type d -print0 |
-    LC_ALL=C sort -z
-)
 
 total=${#artists[@]}
 i=0
@@ -474,12 +520,12 @@ for artist in "${artists[@]}"; do
 
     errfile=$(mktemp)
 
+
     (
         cd "$artist" || exit 1
 
         echo "Processing Artist [$i/$total]: $name"
 
-        : > ARTIST.sha512sums.txt
 
         find . \
             -type f \
@@ -488,7 +534,7 @@ for artist in "${artists[@]}"; do
         LC_ALL=C sort -z |
         while IFS= read -r -d '' file; do
 
-            echo "Hashing: $file"
+            echo "Hashing: $file" >&2
 
             sha512sum "$file"
 
@@ -496,8 +542,10 @@ for artist in "${artists[@]}"; do
 
 
         if [ ! -s ARTIST.sha512sums.txt ]; then
-            echo "ERROR: ARTIST.sha512sums.txt was not created." >&2
+
+            echo "ARTIST.sha512sums.txt was not created." >&2
             exit 1
+
         fi
 
 
@@ -523,8 +571,21 @@ for artist in "${artists[@]}"; do
 
     rm -f "$errfile"
 
-
 done | tee -a "$RUNLOG"
+
+
+echo ""
+echo "=========================================================="
+echo "STEP 4 COMPLETE"
+echo "Artist checksum creation finished."
+echo "Log:"
+echo "$RUNLOG"
+echo "=========================================================="
+
+}
+
+
+main "$@"
 
 ```
 
