@@ -586,7 +586,7 @@ verify_artist() {
 
         count=$((count + 1))
 
-       # echo "Checking [$count/$total_albums] $artist - $album"
+# echo "Checking [$count/$total_albums] $artist - $album"
 
         if [ ! -d "$artist_dir/$album" ]; then
             echo "MISSING ALBUM: $artist - $album"
