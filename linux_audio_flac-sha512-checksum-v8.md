@@ -1,6 +1,10 @@
 # FLAC Library SHA-512 Checksum & Verification Guide
 
+---
+
 01. Introduction
+
+---
 
 This document is a guide and automated script procedure for generating, verifying, and auditing cryptographic hashes across large audio libraries on Linux systems.
 
@@ -12,11 +16,15 @@ Typically, these SHA-512 checksums are verified after data is copied to ensure t
 
 02. Requirements
 
+---
+
 To successfully execute the scripts in this guide, your system must have the following command-line tools installed and available in your shell's PATH:
 
 * sha512sum – Required for calculating and verifying the SHA-512 cryptographic hashes.
 * Core Utilities – Standard GNU core utilities (find, sort, awk, grep, wc, basename, dirname) commonly available in Linux environments like Linux Mint.
 * Zenity / Nemo Actions (Optional) – For users integrating visual verification into the Nemo file manager via custom action scripts.
+
+-------------------------------------------------------------------
 
 -- Note on File Naming Conventions
 
@@ -39,6 +47,8 @@ Parent/
 
 03. Design Philosophy
 
+---
+
 This guide is built on four core data-management principles:
     
 * Decentralized Verification: Hash files are stored locally within the directory of the files they protect, ensuring that data and its verification record travel together during transfers.
@@ -49,6 +59,8 @@ This guide is built on four core data-management principles:
 ---
 
 04. Workflow Overview
+
+---
 
 The hashing process follows a comprehensive six-step operational pipeline designed to audit, establish, confirm, and maintain data integrity:
 
@@ -70,6 +82,8 @@ The hashing process follows a comprehensive six-step operational pipeline design
 This step scans the Parent folder, all Artist folders, and all Album folders to identify and report any stray, unrecognized, or misplaced files anywhere within the library hierarchy.
 
 Before generating checksum manifests, it is critical to ensure that no unexpected or extraneous files are included in the cryptographic hash baseline. This step flags any files that are not authorized audio files, valid album artwork, or existing checksum manifests.
+
+-------------------------------------------------------------------
 
 --- Bash Script Start ---
 ```bash
@@ -142,6 +156,8 @@ fi
 ```
 --- Bash Script End ---
 
+-------------------------------------------------------------------
+
 -- Review Results
 
 View the generated reports by running:
@@ -163,6 +179,8 @@ cat "$LOGDIR/step1_run.log"
 -- Purpose
 
 This step establishes the cryptographic fingerprint for individual files located inside nested Album folders. It creates the standard ALBUM.sha512sums.txt file.
+
+-------------------------------------------------------------------
 
 --- Bash Script Start ---
 ```bash
@@ -252,6 +270,8 @@ rm -f "$LOGDIR/temp_err.log"
 ```
 --- Bash Script End ---
 
+-------------------------------------------------------------------
+
 -- Review Results
 
 View the generated reports by running:
@@ -273,6 +293,8 @@ cat "$LOGDIR/step2_run.log"
 -- Purpose
 
 This step validates the integrity of the individual album folders, confirming that no audio files have suffered bit rot or silent corruption.
+
+-------------------------------------------------------------------
 
 --- Bash Script Start ---
 ```bash
@@ -349,6 +371,8 @@ rm -f "$LOGDIR/temp_err.log"
 ```
 --- Bash Script End ---
 
+-------------------------------------------------------------------
+
 -- Review Results
 
 View the generated reports by running:
@@ -370,6 +394,8 @@ cat "$LOGDIR/step3_run.log"
 -- Purpose
 
 This step establishes the baseline cryptographic fingerprint for files located directly within the parent Artist directories. It creates the standard ARTIST.sha512sums.txt manifest. This step MUST be run from the Parent folder. This is temporary while an improved version is worked on. Just running into too many issues. 
+
+-------------------------------------------------------------------
 
 --- Bash Script Start ---
 ```bash
@@ -465,6 +491,8 @@ generate_artist_checksums() {
 
 --- Bash Script End ---
 
+-------------------------------------------------------------------
+
 -- Review Results
 
 View the generated reports by running:
@@ -487,6 +515,8 @@ cat "$LOGDIR/step4_run.log"
 -- Purpose
 
 This step validates the integrity of the top-level artist hashes against the current state of the files to detect missing or corrupted data. This step MUST be run from the Parent folder. This is temporary while an improved version is worked on. Just running into too many issues. 
+
+-------------------------------------------------------------------
 
 --- Bash Script Start ---
 ```bash
@@ -578,6 +608,8 @@ verify_artist() {
 ```
 --- Bash Script End ---
 
+-------------------------------------------------------------------
+
 -- Review Results
 
 View the generated reports by running:
@@ -599,6 +631,8 @@ cat "$LOGDIR/step5_run.log"
 -- Purpose
 
 This step audits the structural integrity of the library itself. It scans for any directories that are missing their required manifest files, or files that violate the strict naming convention, ensuring nothing escapes the verification safety net.
+
+-------------------------------------------------------------------
 
 --- Bash Script Start ---
 ```bash
@@ -672,6 +706,8 @@ echo "Audit complete. Check step6 logs for detailed anomalies." | tee -a "$LOGDI
 ```
 --- Bash Script End ---
 
+-------------------------------------------------------------------
+
 -- Review Results
 
 View the generated reports by running:
@@ -688,8 +724,12 @@ cat "$LOGDIR/step6_run.log"
 
 11. Troubleshooting & Reference Information
 
+--
+
 1. Checksum Mismatch ("computed checksum did NOT match")
 If an audit reveals a mismatch, the file has been altered since the hash was generated. Do not regenerate the hash to "fix" the error, as you will be validating corrupted data. Delete the corrupted file and replace it from a known-good backup.
 
 2. Missing File Errors ("FAILED open or read")
 This occurs if a file tracked in the manifest has been renamed or deleted. You must delete the existing manifest in that directory and re-run the Generation scripts to establish a new baseline.
+
+
