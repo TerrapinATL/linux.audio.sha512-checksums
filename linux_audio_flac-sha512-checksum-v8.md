@@ -376,45 +376,90 @@ This step establishes the baseline cryptographic fingerprint for files located d
 
 #!/usr/bin/env bash
 
-#Step 4 – Create SHA-512 Checksums for Artist Folders
+# Step 4 – Create SHA-512 Checksums for Artist Folders
 
-if [ -z "$(find . -mindepth 2 -maxdepth 2 -type d)" ]; then
-    > ARTIST.sha512sums.txt
+LOGDIR="$HOME/sha512_library_logs"
+mkdir -p "$LOGDIR"
 
-    find . -mindepth 1 -maxdepth 1 -type d -print0 |
-    LC_ALL=C sort -z |
-    while IFS= read -r -d '' album; do
-        name=$(basename "$album")
-        hash=$(cd "$album" && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1)
-        printf "%s  %s\n" "$hash" "$name" >> ARTIST.sha512sums.txt
-    done
-
-    echo "OK: $(basename "$PWD")" >&2
-
-else
-    total=$(find . -mindepth 1 -maxdepth 1 -type d | wc -l)
-    i=0
-
-    find . -mindepth 1 -maxdepth 1 -type d -print0 |
-    LC_ALL=C sort -z |
-    while IFS= read -r -d '' artist; do
-        i=$((i+1))
-
-        (
-            cd "$artist" &&
-            > ARTIST.sha512sums.txt &&
-            find . -mindepth 1 -maxdepth 1 -type d -print0 |
-            LC_ALL=C sort -z |
-            while IFS= read -r -d '' album; do
-                name=$(basename "$album")
-                hash=$(cd "$album" && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1)
-                printf "%s  %s\n" "$hash" "$name" >> ARTIST.sha512sums.txt
-            done
-        )
-
-        echo "[$i/$total] OK: $(basename "$artist")" >&2
-    done
+# --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
+if [ ! -w "$PWD" ]; then
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR: Write/operational permission denied on $PWD."
+    echo "This often happens if a drive was formatted on a desktop system"
+    echo "and the root filesystem is locked to 'root'."
+    echo "=========================================================="
+    echo "Off-script solution:"
+    echo "Fix mount point or drive ownership by running:"
+    echo "  sudo chown -R \$USER:\$USER \"$PWD\""
+    echo ""
+    exit 1
 fi
+
+if ! find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
+    : # All good, owned by current user
+else
+    echo "Notice: Some files/folders are not owned by \$USER."
+    read -rp "Fix permissions now using sudo chown? (y/N): " fix_choice
+    if [[ "$fix_choice" =~ ^[Yy]$ ]]; then
+        sudo chown -R "$USER:$USER" "$PWD" || { echo "chown failed. Check sudo privileges."; exit 1; }
+    else
+        echo "Aborting due to permission mismatch."; exit 1
+    fi
+fi
+# ---------------------------------------------
+
+generate_artist_checksums() {
+    local artist_dir="$1"
+    local artist_name
+    artist_name=$(basename "$artist_dir")
+
+    (
+        cd "$artist_dir" || exit 1
+        > ARTIST.sha512sums.txt
+
+        find . -mindepth 1 -maxdepth 1 -type d -print0 |
+        LC_ALL=C sort -z |
+        while IFS= read -r -d '' album; do
+            name=$(basename "$album")
+            hash=$(cd "$album" 2>/dev/null && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1)
+
+            if [ -n "$hash" ]; then
+                printf "%s  %s\n" "$hash" "$name" >> ARTIST.sha512sums.txt
+            else
+                echo "ERROR: Failed to hash album '$name' under artist '$artist_name'" >> "$LOGDIR/step4_errors.log"
+            fi
+        done
+    )
+}
+
+# Main execution loop piped to tee
+{
+    if [ -z "$(find . -mindepth 2 -maxdepth 2 -type d)" ]; then
+        # Running inside a single artist folder
+        artist_name=$(basename "$PWD")
+        generate_artist_checksums "$PWD"
+        echo "OK [1/1] $artist_name"
+    else
+        # Running at the root of the music library with multiple artist folders
+        mapfile -d '' artists < <(find . -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z)
+        total=${#artists[@]}
+
+        if [ "$total" -eq 0 ]; then
+            echo "ALERT: No artist subdirectories found under $PWD."
+            exit 1
+        fi
+
+        i=0
+        for artist in "${artists[@]}"; do
+            i=$((i + 1))
+            artist_name=$(basename "$artist")
+
+            generate_artist_checksums "$artist"
+            echo "OK [$i/$total] $artist_name"
+        done
+    fi
+} | tee "$LOGDIR/step4_run.log"
 
 ```
 
