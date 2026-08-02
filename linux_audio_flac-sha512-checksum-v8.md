@@ -720,11 +720,11 @@ cat "$LOGDIR/step6_run.log"
 ```
 --- Bash Script Results 6 End ---
 
---
+---
 
 11. Troubleshooting & Reference Information
 
---
+---
 
 1. Checksum Mismatch ("computed checksum did NOT match")
 If an audit reveals a mismatch, the file has been altered since the hash was generated. Do not regenerate the hash to "fix" the error, as you will be validating corrupted data. Delete the corrupted file and replace it from a known-good backup.
