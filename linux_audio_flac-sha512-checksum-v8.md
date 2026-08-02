@@ -450,40 +450,85 @@ This step validates the integrity of the top-level artist hashes against the cur
 
 # Step 5 – Verify Artist Folders
 
-if [ -z "$(find . -mindepth 2 -maxdepth 2 -type d)" ]; then
-    artist=$(basename "$PWD")
-    echo "=== $artist ==="
-    if [ -f "ARTIST.sha512sums.txt" ]; then
-        while IFS=" " read -r stored_hash album; do
-            actual_hash=$(cd "$album" 2>/dev/null && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1)
-            if [ "$stored_hash" = "$actual_hash" ]; then
-                echo "OK $album"
-            else
-                echo "MISMATCH $album"
-            fi
-        done < "ARTIST.sha512sums.txt"
-    else
-        echo "MISSING ARTIST.sha512sums.txt" >&2
-    fi
-else
-    for d in ./*/; do
-        [ -d "$d" ] || continue
-        artist=$(basename "$d")
-        echo "    === $artist ==="
-        if [ -f "$d/ARTIST.sha512sums.txt" ]; then
-            while IFS=" " read -r stored_hash album; do
-                actual_hash=$(cd "$d/$album" 2>/dev/null && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1)
-                if [ "$stored_hash" = "$actual_hash" ]; then
-                    echo "OK $album"
-                else
-                    echo "MISMATCH $album"
-                fi
-            done < "$d/ARTIST.sha512sums.txt"
-        else
-            echo "MISSING ARTIST.sha512sums.txt" >&2
-        fi
-    done
+LOGDIR="$HOME/sha512_library_logs"
+mkdir -p "$LOGDIR"
+
+# --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
+if [ ! -w "$PWD" ]; then
+    echo ""
+    echo "=========================================================="
+    echo "CRITICAL ERROR: Write/operational permission denied on $PWD."
+    echo "This often happens if a drive was formatted on a desktop system"
+    echo "and the root filesystem is locked to 'root'."
+    echo "=========================================================="
+    echo "Off-script solution:"
+    echo "Fix mount point or drive ownership by running:"
+    echo "  sudo chown -R \$USER:\$USER \"$PWD\""
+    echo ""
+    exit 1
 fi
+
+if ! find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
+    : # All good, owned by current user
+else
+    echo "Notice: Some files/folders are not owned by \$USER."
+    read -rp "Fix permissions now using sudo chown? (y/N): " fix_choice
+    if [[ "$fix_choice" =~ ^[Yy]$ ]]; then
+        sudo chown -R "$USER:$USER" "$PWD" || { echo "chown failed. Check sudo privileges."; exit 1; }
+    else
+        echo "Aborting due to permission mismatch."; exit 1
+    fi
+fi
+# ---------------------------------------------
+
+# Function to process a single artist directory
+verify_artist() {
+    local artist_dir="$1"
+    local artist
+    artist=$(basename "$artist_dir")
+    
+    echo "=== $artist ==="
+
+    if [ ! -f "$artist_dir/ARTIST.sha512sums.txt" ]; then
+        echo "MISSING ARTIST.sha512sums.txt in $artist"
+        echo "ERROR: Missing ARTIST.sha512sums.txt in $artist_dir" >> "$LOGDIR/step5_errors.log"
+        return
+    fi
+
+    # Read lines and keep track of total albums for logging progress
+    local total_albums
+    total_albums=$(wc -l < "$artist_dir/ARTIST.sha512sums.txt")
+    local count=0
+
+    while IFS=" " read -r stored_hash album; do
+        [ -z "$stored_hash" ] && continue
+        count=$((count + 1))
+        
+        local actual_hash
+        actual_hash=$(cd "$artist_dir/$album" 2>/dev/null && find . -type f ! -name ALBUM.sha512sums.txt -print0 | LC_ALL=C sort -z | xargs -0 sha512sum | sha512sum | cut -d" " -f1)
+
+        if [ "$stored_hash" = "$actual_hash" ]; then
+            echo "OK [$count/$total_albums] $artist - $album"
+        else
+            echo "MISMATCH [$count/$total_albums] $artist - $album"
+            echo "MISMATCH: $artist - $album (Expected: $stored_hash, Got: $actual_hash)" >> "$LOGDIR/step5_errors.log"
+        fi
+    done < "$artist_dir/ARTIST.sha512sums.txt"
+}
+
+# Main execution loop with tee for logging
+{
+    if [ -z "$(find . -mindepth 2 -maxdepth 2 -type d)" ]; then
+        # Running inside an individual artist folder
+        verify_artist "$PWD"
+    else
+        # Running at the root of the music library with multiple artist folders
+        for d in ./*/; do
+            [ -d "$d" ] || continue
+            verify_artist "$d"
+        done
+    fi
+} | tee "$LOGDIR/step5_run.log"
 
 ```
 --- Bash Script End ---
