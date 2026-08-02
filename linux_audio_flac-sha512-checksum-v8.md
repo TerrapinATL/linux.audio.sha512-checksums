@@ -85,7 +85,7 @@ Before generating checksum manifests, it is critical to ensure that no unexpecte
 
 -------------------------------------------------------------------
 
---- Bash Script Start ---
+--- Bash Script Step 1 Start ---
 ```bash
 
 #!/usr/bin/env bash
@@ -154,7 +154,7 @@ fi
 
 
 ```
---- Bash Script End ---
+--- Bash Script Step 1 End ---
 
 -------------------------------------------------------------------
 
@@ -162,13 +162,13 @@ fi
 
 View the generated reports by running:
 
---- Bash Script Start ---
+--- Bash Script Results 3 Start ---
 ```bash
 
 cat "$LOGDIR/step1_run.log"
 
 ```
---- Bash Script End ---
+--- Bash Script Results 3 End ---
 
 ---
 
@@ -182,7 +182,7 @@ This step establishes the cryptographic fingerprint for individual files located
 
 -------------------------------------------------------------------
 
---- Bash Script Start ---
+--- Bash Script Step 2 Start ---
 ```bash
 
 #!/usr/bin/env bash
@@ -268,7 +268,7 @@ done | tee "$LOGDIR/step2_run.log"
 rm -f "$LOGDIR/temp_err.log"
 
 ```
---- Bash Script End ---
+--- Bash Script Step 2 End ---
 
 -------------------------------------------------------------------
 
@@ -276,13 +276,13 @@ rm -f "$LOGDIR/temp_err.log"
 
 View the generated reports by running:
 
---- Bash Script Start ---
+--- Bash Script Results 2 Start ---
 ```bash
 
 cat "$LOGDIR/step2_run.log"
 
 ```
---- Bash Script End ---
+--- Bash Script Results 2 End ---
 
 ---
 
@@ -296,7 +296,7 @@ This step validates the integrity of the individual album folders, confirming th
 
 -------------------------------------------------------------------
 
---- Bash Script Start ---
+--- Bash Script Step 3 Start ---
 ```bash
 
 #!/usr/bin/env bash
@@ -369,7 +369,7 @@ done | tee "$LOGDIR/step3_run.log"
 rm -f "$LOGDIR/temp_err.log"
 
 ```
---- Bash Script End ---
+--- Bash Script Step 3 End ---
 
 -------------------------------------------------------------------
 
@@ -377,13 +377,13 @@ rm -f "$LOGDIR/temp_err.log"
 
 View the generated reports by running:
 
---- Bash Script Start ---
+--- Bash Script Results 3 Start ---
 ```bash
 
 cat "$LOGDIR/step3_run.log"
 
 ```
---- Bash Script End ---
+--- Bash Script Results 3 End ---
 
 ---
 
@@ -397,7 +397,7 @@ This step establishes the baseline cryptographic fingerprint for files located d
 
 -------------------------------------------------------------------
 
---- Bash Script Start ---
+--- Bash Script Step 4 Start ---
 ```bash
 
 #!/usr/bin/env bash
@@ -489,7 +489,7 @@ generate_artist_checksums() {
 
 ```
 
---- Bash Script End ---
+--- Bash Script Step 4 End ---
 
 -------------------------------------------------------------------
 
@@ -497,14 +497,14 @@ generate_artist_checksums() {
 
 View the generated reports by running:
 
---- Bash Script Start ---
+--- Bash Script Results 4 Start ---
 
 ```bash
 
 cat "$LOGDIR/step4_run.log"
 
 ```
---- Bash Script End ---
+--- Bash Script Results 4 End ---
 
 ---
 
@@ -518,7 +518,7 @@ This step validates the integrity of the top-level artist hashes against the cur
 
 -------------------------------------------------------------------
 
---- Bash Script Start ---
+--- Bash Script Step 5 Start ---
 ```bash
 
 #!/usr/bin/env bash
@@ -606,7 +606,7 @@ verify_artist() {
 } | tee "$LOGDIR/step5_run.log"
 
 ```
---- Bash Script End ---
+--- Bash Script Step 5 End ---
 
 -------------------------------------------------------------------
 
@@ -614,13 +614,13 @@ verify_artist() {
 
 View the generated reports by running:
 
---- Bash Script Start ---
+--- Bash Script Results 5 Start ---
 ```bash
 
 cat "$LOGDIR/step5_run.log"
 
 ```
---- Bash Script End ---
+--- Bash Script Results 5 End ---
 
 ---
 
@@ -634,7 +634,7 @@ This step audits the structural integrity of the library itself. It scans for an
 
 -------------------------------------------------------------------
 
---- Bash Script Start ---
+--- Bash Script Step 6 Start ---
 ```bash
 
 #!/usr/bin/env bash
@@ -704,7 +704,7 @@ done
 echo "Audit complete. Check step6 logs for detailed anomalies." | tee -a "$LOGDIR/step6_run.log"
 
 ```
---- Bash Script End ---
+--- Bash Script Step 6 End ---
 
 -------------------------------------------------------------------
 
@@ -712,13 +712,13 @@ echo "Audit complete. Check step6 logs for detailed anomalies." | tee -a "$LOGDI
 
 View the generated reports by running:
 
---- Bash Script Start ---
+--- Bash Script Results 6 Start ---
 ```bash
 
 cat "$LOGDIR/step6_run.log"
 
 ```
---- Bash Script End ---
+--- Bash Script Results 6 End ---
 
 --
 
