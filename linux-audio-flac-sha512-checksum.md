@@ -89,12 +89,9 @@ Before generating checksum manifests, it is critical to ensure that no unexpecte
 ```bash
 
 #!/usr/bin/env bash
-
 #Step 1 – Stray File Audit and Identification
-
 LOGDIR="$HOME/sha512_library_logs"
 mkdir -p "$LOGDIR"
-
 # --- UNIVERSAL PERMISSION & ROOT-LOCK CHECK ---
 if [ ! -w "$PWD" ]; then
     echo ""
@@ -109,11 +106,10 @@ if [ ! -w "$PWD" ]; then
     echo ""
     exit 1
 fi
-
 if ! find "$PWD" ! -user "$USER" -print -quit 2>/dev/null | grep -q .; then
     : # All good, owned by current user
 else
-    echo "Notice: Some files/folders are not owned by \$USER."
+    echo "Notice: Some files/folders are not owned by $USER."
     read -rp "Fix permissions now using sudo chown? (y/N): " fix_choice
     if [[ "$fix_choice" =~ ^[Yy]$ ]]; then
         sudo chown -R "$USER:$USER" "$PWD" || { echo "chown failed. Check sudo privileges."; exit 1; }
@@ -122,10 +118,8 @@ else
     fi
 fi
 # ---------------------------------------------
-
 {
     echo "Stray file audit started..."
-
     find "$PWD" -type f \
         ! -iname "*.flac" \
         ! -iname "*.mp3" \
@@ -140,18 +134,14 @@ fi
         ! -name "ARTIST.sha512sums.txt" \
         ! -name "ALBUM.sha512sums.txt" \
         -print | tee "$LOGDIR/step1_stray_files_found.log"
-
     count=$(wc -l < "$LOGDIR/step1_stray_files_found.log")
-
     if [ "$count" -gt 0 ]; then
         echo "WARNING: Found $count stray/unrecognized file(s). Review '$LOGDIR/step1_stray_files_found.log' before generating checksums."
     else
         echo "OK: No unauthorized stray files detected. Library is clean for checksum generation."
     fi
-
     echo "Stray file audit completed."
 } | tee "$LOGDIR/step1_run.log"
-
 
 ```
 --- Bash Script Step 1 End ---
